@@ -38,7 +38,7 @@ async fn main() {
     match args {
         Args::Drill { .. } => todo!(),
         Args::Create { card_path } => {
-            if let Err(err) = create::run(card_path) {
+            if let Err(err) = create::run(&db, card_path).await {
                 eprintln!("error: {err}");
             }
         }

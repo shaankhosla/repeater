@@ -1,5 +1,6 @@
 use crate::{
     card::CardType,
+    crud::DB,
     editor::Editor,
     utils::{cards_from_md, content_to_card, validate_file_can_be_card},
 };
@@ -28,15 +29,15 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 
-pub fn run(card_path: String) -> Result<()> {
+pub async fn run(db: &DB, card_path: String) -> Result<()> {
     let card_path = validate_file_can_be_card(card_path)?;
-    let card_exists = card_path.is_file();
-    if !card_exists && !prompt_create(&card_path)? {
+    let file_exists = card_path.is_file();
+    if !file_exists && !prompt_create(&card_path)? {
         println!("Aborting; card not created.");
         return Ok(());
     }
 
-    capture_cards(&card_path)?;
+    capture_cards(db, &card_path).await?;
     Ok(())
 }
 
@@ -52,7 +53,7 @@ fn prompt_create(path: &Path) -> io::Result<bool> {
     Ok(trimmed == "y" || trimmed == "yes")
 }
 
-fn append_to_card(path: &Path, contents: &str) -> Result<()> {
+async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result<()> {
     let existing_len = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let start_idx = existing_len as usize;
     let end_idx = start_idx + contents.len();
@@ -64,21 +65,18 @@ fn append_to_card(path: &Path, contents: &str) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    let trimmed = contents.trim_end_matches('\n');
-    if trimmed.is_empty() {
-        return Ok(());
-    }
 
-    let has_existing_content = file.metadata()?.len() > 0;
-    if has_existing_content {
+    if start_idx > 0 {
         writeln!(file)?;
     }
-    writeln!(file, "{}", trimmed)?;
+    writeln!(file, "{}", contents)?;
+
+    db.add_card(&card).await?;
 
     Ok(())
 }
 
-fn capture_cards(card_path: &Path) -> io::Result<()> {
+async fn capture_cards(db: &DB, card_path: &Path) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(
@@ -93,7 +91,7 @@ fn capture_cards(card_path: &Path) -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.show_cursor()?;
 
-    let editor_result: io::Result<()> = (|| {
+    let editor_result: io::Result<()> = async {
         let mut editor = Editor::new();
         let mut status: Option<String> = None;
         let mut num_cards_in_collection = cards_from_md(card_path).unwrap_or_default().len();
@@ -166,7 +164,7 @@ fn capture_cards(card_path: &Path) -> io::Result<()> {
 
                 if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     let contents = editor.content();
-                    let save_status = append_to_card(card_path, &contents);
+                    let save_status = create_card_append_file(db, card_path, &contents).await;
                     match save_status {
                         Ok(_) => {
                             editor.clear();
@@ -212,7 +210,8 @@ fn capture_cards(card_path: &Path) -> io::Result<()> {
             }
         }
         Ok(())
-    })();
+    }
+    .await;
 
     disable_raw_mode()?;
     execute!(

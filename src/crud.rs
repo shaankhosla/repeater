@@ -24,7 +24,6 @@ impl DB {
             .map_err(|e| anyhow!("Failed to create data directory: {}", e))?;
 
         let db_path: PathBuf = data_dir.join("cards.db");
-        let db_url = format!("sqlite://{}", db_path.to_string_lossy());
         let options =
             SqliteConnectOptions::from_str(&db_path.to_string_lossy())?.create_if_missing(true);
         let pool = SqlitePoolOptions::new()
@@ -42,6 +41,9 @@ impl DB {
     }
 
     pub async fn add_card(&self, card: &Card) -> Result<()> {
+        if self.card_exists(card).await? {
+            return Ok(());
+        }
         let now = chrono::Utc::now().to_rfc3339();
 
         sqlx::query(
