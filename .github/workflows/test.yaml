@@ -71,60 +71,18 @@ jobs:
         files: ./dist/repeat
 
   homebrew:
-    name: Publish to Homebrew tap
+    name: Publish to Homebrew Tap
     runs-on: ubuntu-latest
     needs: release
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout tap repository
-        uses: actions/checkout@v4
+      - name: Bump Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v2
         with:
-          repository: shaankhosla/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_PAT }}
-          ref: main
-
-      - name: Download released binary
-        uses: actions/download-artifact@v4
-        with:
-          name: binary
-          path: ./dist
-
-      - name: Compute SHA256
-        id: sha
-        run: |
-          sha256sum ./dist/repeat | awk '{print $1}' > checksum.txt
-          echo "sha256=$(cat checksum.txt)" >> $GITHUB_OUTPUT
-
-      - name: Generate formula
-        run: |
-          FORMULA_NAME="repeat"
-          BIN_URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.release.outputs.tag_name }}/repeat"
-          SHA256="${{ steps.sha.outputs.sha256 }}"
-
-          mkdir -p Formula
-          cat > Formula/${FORMULA_NAME}.rb <<EOF
-          class ${FORMULA_NAME.capitalize()} < Formula
-            desc "TUI tool for spaced repetition"
-            homepage "https://github.com/${{ github.repository }}"
-            url "${BIN_URL}"
-            sha256 "${SHA256}"
-            version "${{ needs.release.outputs.tag_name }}"
-            license "Apache-2.0"
-
-            def install
-              bin.install "repeat"
-            end
-
-            test do
-              system "#{bin}/repeat", "--version"
-            end
-          end
-          EOF
-
-      - name: Commit and push formula
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/
-          git commit -m "Update formula to ${{ needs.release.outputs.tag_name }}"
-          git push origin main
+          formula-name: repeat
+          org: shaankhosla
+          tap: homebrew-tap
+          tag-name: ${{ needs.release.outputs.tag_name }}
+          download-url: https://github.com/${{ github.repository }}/releases/download/${{ needs.release.outputs.tag_name }}/repeat
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_PAT }}
