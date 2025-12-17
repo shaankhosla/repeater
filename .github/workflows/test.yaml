@@ -58,9 +58,28 @@ jobs:
     - name: Get latest tag or create one automatically
       id: version
       run: |
-        latest_tag=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+        # Try to get the latest tag; if none, start from v0.0.0
+        latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "Latest tag: $latest_tag"
+
+        # Remove leading v if present
+        version_core=${latest_tag#v}
+
+        # Split into components
+        IFS='.' read -r major minor patch <<< "$version_core"
+
+        # Ensure numeric values
+        major=${major:-0}
+        minor=${minor:-0}
+        patch=${patch:-0}
+
+        # Increment patch
+        patch=$((patch+1))
+
+        new_tag="v${major}.${minor}.${patch}"
+        echo "New tag: $new_tag"
+
         echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
-        new_tag=v$(echo $latest_tag | awk -F. '{printf("%d.%d.%d", $1,$2,$3+1)}')
         echo "new_tag=$new_tag" >> $GITHUB_OUTPUT
     - name: Create Release
       uses: softprops/action-gh-release@v2
