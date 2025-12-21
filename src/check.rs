@@ -53,16 +53,17 @@ fn dashboard_loop<B: ratatui::backend::Backend>(
         terminal.draw(|frame| draw_dashboard(frame, stats))?;
 
         if event::poll(Duration::from_millis(200))?
-            && let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-                let exit_ctrl_c =
-                    key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
-                if key.code == KeyCode::Esc || exit_ctrl_c {
-                    break;
-                }
+            && let Event::Key(key) = event::read()?
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
             }
+            let exit_ctrl_c =
+                key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
+            if key.code == KeyCode::Esc || exit_ctrl_c {
+                break;
+            }
+        }
     }
     Ok(())
 }
