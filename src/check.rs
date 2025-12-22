@@ -4,9 +4,10 @@ use crate::{
     theme::Theme,
 };
 
-use std::{io, time::Duration};
+use std::{cmp, io, time::Duration};
 
 use anyhow::Result;
+use chrono::NaiveDate;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
@@ -15,9 +16,9 @@ use crossterm::{
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     text::{Line, Span},
-    widgets::{List, ListItem, Paragraph, Wrap},
+    widgets::{Bar, BarChart, BarGroup, Paragraph, Wrap},
 };
 
 pub async fn run(db: &DB, paths: Vec<String>) -> Result<usize> {
@@ -83,7 +84,7 @@ fn draw_dashboard(frame: &mut Frame<'_>, stats: &CardStats) {
 
     let summary = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(rows[0]);
 
     frame.render_widget(collection_panel(stats), summary[0]);
@@ -91,10 +92,10 @@ fn draw_dashboard(frame: &mut Frame<'_>, stats: &CardStats) {
 
     let mid = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
         .split(rows[1]);
 
-    frame.render_widget(upcoming_panel(stats), mid[0]);
+    render_upcoming_histogram(frame, mid[0], stats);
     frame.render_widget(highlights_panel(stats), mid[1]);
 
     frame.render_widget(help_panel(stats), rows[2]);
@@ -179,32 +180,70 @@ fn due_panel(stats: &CardStats) -> Paragraph<'static> {
         .block(Theme::panel("Due Status"))
 }
 
-fn upcoming_panel(stats: &CardStats) -> List<'static> {
-    let mut items: Vec<ListItem> = stats
+fn render_upcoming_histogram(frame: &mut Frame<'_>, area: Rect, stats: &CardStats) {
+    let block = Theme::panel_with_line(Theme::title_line("Next 7 days histogram"));
+    if stats.upcoming_week.is_empty() {
+        let empty = Paragraph::new(vec![Line::from(vec![Theme::muted_span(
+            "You're clear for the next 7 days.",
+        )])])
+        .style(Theme::body())
+        .block(block);
+        frame.render_widget(empty, area);
+        return;
+    }
+
+    frame.render_widget(block.clone(), area);
+    let mut inner = block.inner(area);
+    if inner.width == 0 || inner.height == 0 {
+        inner = area;
+    }
+    let mut chart_area = inner;
+    let top_pad = cmp::min(3, chart_area.height);
+    chart_area.y = chart_area.y.saturating_add(top_pad);
+    chart_area.height = chart_area.height.saturating_sub(top_pad);
+
+    let right_pad = cmp::min(2, chart_area.width);
+    chart_area.width = chart_area.width.saturating_sub(right_pad);
+
+    if chart_area.width == 0 || chart_area.height == 0 {
+        chart_area = inner;
+    }
+
+    let bars: Vec<Bar<'static>> = stats
         .upcoming_week
         .iter()
         .map(|bucket| {
-            ListItem::new(Line::from(vec![
-                Theme::label_span(bucket.day.clone()),
-                Span::raw("  "),
-                Theme::muted_span("cards"),
-                Theme::bullet(),
-                Theme::label_span(format!("{}", bucket.count)),
-            ]))
+            let label = format_upcoming_label(&bucket.day);
+            Bar::default()
+                .value(bucket.count as u64)
+                .text_value(bucket.count.to_string())
+                .label(Line::from(vec![Theme::muted_span(label)]))
+                .style(Theme::label())
         })
         .collect();
 
-    if items.is_empty() {
-        items.push(ListItem::new(Line::from(vec![Theme::muted_span(
-            "You're clear for the next 7 days.",
-        )])));
-    }
+    let len = bars.len() as u16;
+    let available = chart_area.width.saturating_sub(1).max(1);
+    let denom = cmp::max(len, 1);
+    let raw_width = available / denom;
+    let bar_width = cmp::max(1, cmp::min(cmp::max(raw_width, 2), available));
 
-    List::new(items)
-        .style(Theme::body())
-        .block(Theme::panel_with_line(Theme::title_line(
-            "Next 7 days schedule",
-        )))
+    let chart = BarChart::default()
+        .data(BarGroup::default().bars(&bars))
+        .bar_width(bar_width)
+        .bar_gap(1)
+        .value_style(Theme::body())
+        .label_style(Theme::muted())
+        .bar_style(Theme::label())
+        .style(Theme::body());
+
+    frame.render_widget(chart, chart_area);
+}
+
+fn format_upcoming_label(day: &str) -> String {
+    NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .map(|date| date.format("%a %d").to_string())
+        .unwrap_or_else(|_| day.to_string())
 }
 
 fn highlights_panel(stats: &CardStats) -> Paragraph<'static> {
