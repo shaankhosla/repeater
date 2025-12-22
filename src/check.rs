@@ -238,15 +238,21 @@ fn render_upcoming_histogram(frame: &mut Frame<'_>, area: Rect, stats: &CardStat
         .collect();
 
     let len = bars.len() as u16;
-    let available = chart_area.width.saturating_sub(1).max(1);
     let denom = cmp::max(len, 1);
-    let raw_width = available / denom;
-    let bar_width = cmp::max(1, cmp::min(cmp::max(raw_width, 2), available));
+    let mut available = chart_area.width.saturating_sub(1).max(1);
+    let mut bar_gap: u16 = if len > 1 { 1 } else { 0 };
+    let required_with_gap = len.saturating_add(bar_gap.saturating_mul(len.saturating_sub(1)));
+    if required_with_gap > available {
+        bar_gap = 0;
+    }
+    let total_gap = bar_gap.saturating_mul(len.saturating_sub(1));
+    available = available.saturating_sub(total_gap);
+    let bar_width = cmp::max(1, cmp::min(available / denom, available));
 
     let chart = BarChart::default()
         .data(BarGroup::default().bars(&bars))
         .bar_width(bar_width)
-        .bar_gap(1)
+        .bar_gap(bar_gap)
         .value_style(Theme::body())
         .label_style(Theme::muted())
         .bar_style(Theme::label())
