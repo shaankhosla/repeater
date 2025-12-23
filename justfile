@@ -6,7 +6,8 @@ precommit:
     cargo test
 
 delete_db:
-    rm "/Users/shaankhosla/Library/Application Support/repeat/cards.db"
+    -rm "/Users/shaankhosla/Library/Application Support/repeat/cards.db"
+    -touch "/Users/shaankhosla/Library/Application Support/repeat/cards.db"
     DATABASE_URL="sqlite:///Users/shaankhosla/Library/Application Support/repeat/cards.db" sqlx migrate run
 
 create:
