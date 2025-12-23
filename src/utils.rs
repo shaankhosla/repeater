@@ -1,35 +1,18 @@
 use ignore::WalkBuilder;
+use ignore::types::TypesBuilder;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, anyhow};
-
 use crate::card::{Card, CardContent};
+use ignore::WalkState;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use tokio::sync::mpsc;
 
-pub fn validate_path_can_be_card(card_path: &Path) -> Result<PathBuf> {
-    if !card_path.exists() {
-        return Err(anyhow!("Card path does not exist: {}", card_path.display()));
-    }
-    if card_path.is_dir() {
-        return Err(anyhow!(
-            "Card path cannot be a directory: {}",
-            card_path.display()
-        ));
-    }
+use crate::crud::DB;
 
-    if !card_path.is_file() {
-        return Err(anyhow!("Card path must be a file: {}", card_path.display()));
-    }
-    if !is_markdown(card_path) {
-        return Err(anyhow!(
-            "Card path must be a markdown file: {}",
-            card_path.display()
-        ));
-    }
-
-    Ok(card_path.to_path_buf())
-}
+use anyhow::{Result, anyhow};
 
 pub fn is_markdown(path: &Path) -> bool {
     path.extension()
@@ -183,24 +166,32 @@ pub fn get_hash(content: &str) -> Option<String> {
 
 pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
     let file = File::open(path)?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::new(file);
 
     let mut cards = Vec::new();
     let mut buffer = String::new();
+    let mut line = String::new();
     let mut start_idx = 0;
     let mut last_idx = 0;
-    for (idx, line) in reader.lines().enumerate() {
-        let line = line?;
+    let mut line_idx = 0;
+
+    loop {
+        line.clear();
+        let bytes_read = reader.read_line(&mut line)?;
+        if bytes_read == 0 {
+            break;
+        }
+
         if line.starts_with("Q:") || line.starts_with("C:") {
             if !buffer.is_empty() {
-                cards.push(content_to_card(path, &buffer, start_idx, idx)?);
+                cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
                 buffer.clear();
             }
-            start_idx = idx;
+            start_idx = line_idx;
         }
         buffer.push_str(&line);
-        buffer.push('\n');
-        last_idx = idx;
+        last_idx = line_idx;
+        line_idx += 1;
     }
     if !buffer.is_empty() {
         cards.push(content_to_card(path, &buffer, start_idx, last_idx + 1)?);
@@ -209,60 +200,98 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
     Ok(cards)
 }
 
-fn collect_markdown_files(path: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    if validate_path_can_be_card(path).is_ok() {
-        files.push(path.to_path_buf());
-        return files;
+pub(crate) fn markdown_walk_builder(paths: &[PathBuf]) -> Result<Option<WalkBuilder>> {
+    let mut iter = paths.iter();
+    let Some(first) = iter.next() else {
+        return Ok(None);
+    };
+    let mut builder = WalkBuilder::new(first);
+    for path in iter {
+        builder.add(path);
     }
-    let walker = WalkBuilder::new(path)
-        .hidden(false)
-        .git_ignore(true)
-        .git_exclude(true)
-        .build();
-    for result in walker {
-        let entry = match result {
-            Ok(e) => e,
-            Err(_) => {
-                continue;
-            }
-        };
+    builder.hidden(false).git_ignore(true).git_exclude(true);
+    let mut types = TypesBuilder::new();
+    types.add("markdown", "*.md")?;
+    types.select("markdown");
+    builder.types(types.build()?);
+    Ok(Some(builder))
+}
 
-        let p = entry.path();
-        if validate_path_can_be_card(p).is_ok() {
-            files.push(p.to_path_buf());
+fn run_card_walker(paths: Vec<PathBuf>, sender: mpsc::UnboundedSender<Vec<Card>>) -> Result<()> {
+    let Some(builder) = markdown_walk_builder(&paths)? else {
+        return Ok(());
+    };
+
+    let error_slot = Arc::new(Mutex::new(None));
+
+    builder.build_parallel().run(|| {
+        let sender = sender.clone();
+        let error_slot = Arc::clone(&error_slot);
+        Box::new(move |entry| match entry {
+            Ok(entry) => {
+                if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    return WalkState::Continue;
+                }
+                let path = entry.path().to_path_buf();
+                match cards_from_md(&path) {
+                    Ok(cards) => {
+                        if cards.is_empty() {
+                            return WalkState::Continue;
+                        }
+                        if sender.send(cards).is_err() {
+                            return WalkState::Quit;
+                        }
+                    }
+                    Err(err) => {
+                        *error_slot.lock().unwrap() =
+                            Some(err.context(format!("Failed to parse {}", path.display())));
+                        return WalkState::Quit;
+                    }
+                }
+                WalkState::Continue
+            }
+            Err(err) => {
+                *error_slot.lock().unwrap() = Some(anyhow!(err));
+                WalkState::Quit
+            }
+        })
+    });
+
+    drop(sender);
+
+    if let Some(err) = error_slot.lock().unwrap().take() {
+        return Err(err);
+    }
+    Ok(())
+}
+
+pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<String, Card>> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<Vec<Card>>();
+    let walker_handle = tokio::task::spawn_blocking(move || run_card_walker(paths, tx));
+
+    let mut hash_cards = HashMap::new();
+    while let Some(batch) = rx.recv().await {
+        if batch.is_empty() {
+            continue;
+        }
+        db.add_cards_batch(&batch).await?;
+        for card in batch {
+            hash_cards.insert(card.card_hash.clone(), card);
         }
     }
 
-    files.sort();
-    files.dedup();
-    files
-}
+    walker_handle.await??;
 
-pub fn cards_from_paths(paths: &[PathBuf]) -> Result<Vec<Card>> {
-    let mut markdown_files = Vec::new();
-    for path in paths {
-        let path_files = collect_markdown_files(path);
-        markdown_files.extend(path_files);
-    }
-
-    markdown_files.sort();
-    markdown_files.dedup();
-    let mut cards = Vec::new();
-    for path in markdown_files {
-        cards.extend(cards_from_md(&path)?);
-    }
-    Ok(cards)
+    Ok(hash_cards)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{cards_from_paths, content_to_card, parse_card_lines};
-    use std::path::PathBuf;
-
+    use super::{cards_from_md, content_to_card, parse_card_lines};
     use crate::card::CardContent;
-
-    use super::cards_from_md;
+    use crate::crud::DB;
+    use crate::utils::register_all_cards;
+    use std::path::PathBuf;
 
     #[test]
     fn test_card_parsing() {
@@ -322,15 +351,23 @@ mod tests {
         assert_eq!(cards.len(), 8);
     }
 
-    #[test]
-    fn collects_cards_from_directory() {
+    #[tokio::test]
+    async fn collects_cards_from_directory() {
+        let db = DB::new()
+            .await
+            .expect("Failed to connect to or initialize database");
         let dir_path = PathBuf::from("test_data");
-        let cards = cards_from_paths(&[dir_path]).expect("should collect cards");
+        let cards = register_all_cards(&db, vec![dir_path]).await.unwrap();
         assert_eq!(cards.len(), 8);
-        assert!(
-            cards
-                .iter()
-                .all(|card| card.file_path.ends_with("test_data/test.md"))
-        );
+        for card in cards.values() {
+            assert!(card.file_path.ends_with("test_data/test.md"));
+        }
+
+        let dir_path = PathBuf::from("test_data/");
+        let file_path = PathBuf::from("test_data/test.md");
+        let cards = register_all_cards(&db, vec![dir_path, file_path])
+            .await
+            .unwrap();
+        assert_eq!(cards.len(), 8);
     }
 }

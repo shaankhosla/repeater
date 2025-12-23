@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -7,7 +6,7 @@ use crate::card::{Card, CardContent};
 use crate::crud::DB;
 use crate::fsrs::ReviewStatus;
 use crate::theme::Theme;
-use crate::utils::cards_from_paths;
+use crate::utils::register_all_cards;
 
 use anyhow::{Context, Result};
 use crossterm::event::KeyModifiers;
@@ -44,21 +43,6 @@ pub async fn run(
     start_drill_session(db, cards_due_today).await?;
 
     Ok(())
-}
-
-pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<String, Card>> {
-    let cards = cards_from_paths(&paths)?;
-    db.add_cards_batch(&cards).await?;
-
-    let hash_cards: HashMap<String, Card> = cards
-        .into_iter()
-        .map(|c| {
-            let hash = c.card_hash.clone();
-            (hash, c)
-        })
-        .collect();
-
-    Ok(hash_cards)
 }
 
 struct DrillState<'a> {

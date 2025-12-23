@@ -1,8 +1,8 @@
 use crate::{
     crud::DB,
-    drill::register_all_cards,
     stats::{CardLifeCycle, CardStats, Histogram},
     theme::Theme,
+    utils::register_all_cards,
 };
 
 use std::{cmp, io, path::PathBuf, time::Duration};
@@ -26,7 +26,9 @@ pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
     let card_hashes = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
     let stats = db.collection_stats(&card_hashes).await?;
-    render_dashboard(&stats)?;
+    dbg!(&card_hashes);
+    dbg!(&stats);
+    // render_dashboard(&stats)?;
     Ok(count)
 }
 
