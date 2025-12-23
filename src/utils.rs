@@ -200,7 +200,7 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
     Ok(cards)
 }
 
-pub(crate) fn markdown_walk_builder(paths: &[PathBuf]) -> Result<Option<WalkBuilder>> {
+fn markdown_walk_builder(paths: &[PathBuf]) -> Result<Option<WalkBuilder>> {
     let mut iter = paths.iter();
     let Some(first) = iter.next() else {
         return Ok(None);
@@ -315,8 +315,12 @@ mod tests {
         assert!(card.is_err());
 
         let content = "Q: what?\nA: yes\n\n";
-        let card = content_to_card(&card_path, content, 1, 1);
-        if let CardContent::Basic { question, answer } = &card.expect("should be basic").content {
+        let card = content_to_card(&card_path, content, 1, 1).unwrap();
+        assert_eq!(
+            card.card_hash,
+            "a3d83e3e6aa97dad07e955c6bc819baf8ff654dc086bc12fbb1dacc1a92f8e5e"
+        );
+        if let CardContent::Basic { question, answer } = &card.content {
             assert_eq!(question, "what?");
             assert_eq!(answer, "yes");
         } else {
