@@ -26,9 +26,7 @@ pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
     let card_hashes = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
     let stats = db.collection_stats(&card_hashes).await?;
-    dbg!(&card_hashes);
-    dbg!(&stats);
-    // render_dashboard(&stats)?;
+    render_dashboard(&stats)?;
     Ok(count)
 }
 
