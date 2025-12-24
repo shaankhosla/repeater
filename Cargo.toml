@@ -1,6 +1,6 @@
 [package]
 name = "repeat"
-version = "0.0.10"
+version = "0.0.11"
 edition = "2024"
 
 [dependencies]
