@@ -12,7 +12,7 @@
   </a>
 </p>
 
-`repeat` is a local-first spaced repetition tool that keeps your decks in Markdown, hashes every card for identity, and schedules reviews with FSRS. Everything happens in the terminal: edit cards with a built-in TUI, drill them with a keyboard-only flow, and keep progress in a lightweight SQLite database.
+`repeat` is a command-line flashcard program that uses spaced repetition to boost your memory retention. It’s like a lightweight, text-based Anki you run in your terminal. Your decks are kept in Markdown, progress is tracked in SQLite, and reviewes are scheduled with Free Spaced Repetition Scheduler (FSRS), a state-of-the-art algorithm targeting 90% recall.
 
 <p align="center">
   <img src="create_example.png" alt="Creating cards in the built-in editor" width="45%" />
