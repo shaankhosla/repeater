@@ -46,11 +46,9 @@ pub fn trim_line(line: &str) -> Option<String> {
     }
     Some(trimmed_line)
 }
-fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<String>) {
-    let mut question_lines = Vec::new();
-    let mut answer_lines = Vec::new();
-    let mut cloze_lines = Vec::new();
 
+fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<String>) {
+    #[derive(Copy, Clone)]
     enum Section {
         Question,
         Answer,
@@ -58,65 +56,86 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
         None,
     }
 
+    let mut question_lines = Vec::new();
+    let mut answer_lines = Vec::new();
+    let mut cloze_lines = Vec::new();
+
     let mut section = Section::None;
 
     for raw_line in contents.lines() {
-        let line = match trim_line(raw_line) {
-            Some(line) => line,
-            None => {
-                match section {
-                    Section::Question => question_lines.push(String::new()),
-                    Section::Answer => answer_lines.push(String::new()),
-                    Section::Cloze => cloze_lines.push(String::new()),
-                    Section::None => {}
-                }
-                continue;
+        let trimmed = trim_line(raw_line);
+
+        if trimmed.is_none() {
+            match section {
+                Section::Question => question_lines.push(String::new()),
+                Section::Answer => answer_lines.push(String::new()),
+                Section::Cloze => cloze_lines.push(String::new()),
+                Section::None => {}
             }
-        };
+            continue;
+        }
+
+        let line = trimmed.unwrap();
 
         if let Some(rest) = line.strip_prefix("Q:") {
             section = Section::Question;
             question_lines.clear();
-            if let Some(q) = trim_line(rest) {
-                question_lines.push(q)
+            if let Some(v) = trim_line(rest) {
+                question_lines.push(v);
             }
             continue;
-        } else if let Some(rest) = line.strip_prefix("A:") {
+        }
+
+        if let Some(rest) = line.strip_prefix("A:") {
             section = Section::Answer;
             answer_lines.clear();
-            if let Some(q) = trim_line(rest) {
-                answer_lines.push(q)
+            if let Some(v) = trim_line(rest) {
+                answer_lines.push(v);
             }
             continue;
-        } else if let Some(rest) = line.strip_prefix("C:") {
+        }
+
+        if let Some(rest) = line.strip_prefix("C:") {
             section = Section::Cloze;
             cloze_lines.clear();
-            if let Some(q) = trim_line(rest) {
-                cloze_lines.push(q)
+            if let Some(v) = trim_line(rest) {
+                cloze_lines.push(v);
             }
             continue;
         }
 
         match section {
-            Section::Question => question_lines.push(line.to_string()),
-            Section::Answer => answer_lines.push(line.to_string()),
-            Section::Cloze => cloze_lines.push(line.to_string()),
+            Section::Question => question_lines.push(line.to_owned()),
+            Section::Answer => answer_lines.push(line.to_owned()),
+            Section::Cloze => cloze_lines.push(line.to_owned()),
             Section::None => {}
         }
     }
 
-    let join_nonempty = |v: Vec<String>| {
+    fn join_nonempty(v: Vec<String>) -> Option<String> {
         if v.is_empty() {
+            return None;
+        }
+
+        let total_len: usize = v.iter().map(|s| s.len()).sum::<usize>() + v.len().saturating_sub(1);
+        let mut out = String::with_capacity(total_len);
+
+        for (i, line) in v.iter().enumerate() {
+            if i > 0 {
+                out.push('\n');
+            }
+            out.push_str(line);
+        }
+
+        if out.trim().is_empty() {
             None
         } else {
-            let concatted_string = v.join("\n");
-            if concatted_string.trim().is_empty() {
-                None
-            } else {
-                Some(concatted_string.trim_end().to_string())
+            while out.ends_with(char::is_whitespace) {
+                out.pop();
             }
+            Some(out)
         }
-    };
+    }
 
     (
         join_nonempty(question_lines),
