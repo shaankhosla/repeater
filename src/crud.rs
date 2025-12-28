@@ -43,7 +43,6 @@ impl DB {
 
     pub async fn add_card(&self, card: &Card) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
-        let card_hash = card.card_hash.clone();
 
         sqlx::query!(
             r#"
@@ -60,7 +59,7 @@ impl DB {
         )
         VALUES (?, ?, NULL, NULL, NULL, NULL, 0, NULL, 0)
         "#,
-            card_hash,
+            card.card_hash,
             now
         )
         .execute(&self.pool)
@@ -75,7 +74,6 @@ impl DB {
         let now = chrono::Utc::now().to_rfc3339();
 
         for card in cards {
-            let card_hash = card.card_hash.clone();
             let added_at = now.clone();
             sqlx::query!(
                 r#"
@@ -92,7 +90,7 @@ impl DB {
             )
             VALUES (?, ?, NULL, NULL, NULL, NULL, 0, NULL, 0)
             "#,
-                card_hash,
+                card.card_hash,
                 added_at
             )
             .execute(&mut *tx)
@@ -104,10 +102,9 @@ impl DB {
     }
 
     pub async fn card_exists(&self, card: &Card) -> Result<bool> {
-        let card_hash = card.card_hash.clone();
         let count: i64 = sqlx::query_scalar!(
             r#"SELECT COUNT(1) as "count!: i64" FROM cards WHERE card_hash = ?"#,
-            card_hash
+            card.card_hash
         )
         .fetch_one(&self.pool)
         .await?;
@@ -122,7 +119,6 @@ impl DB {
         let current_performance = self.get_card_performance(card).await?;
         let now = chrono::Utc::now();
         let new_performance = update_performance(current_performance, review_status, now);
-        let card_hash = card.card_hash.clone();
 
         let interval_days = new_performance.interval_days as i64;
         let review_count = new_performance.review_count as i64;
@@ -147,7 +143,7 @@ impl DB {
             interval_days,
             new_performance.due_date,
             review_count,
-            card_hash,
+            card.card_hash,
         )
         .execute(&self.pool)
         .await?;
@@ -156,7 +152,6 @@ impl DB {
     }
 
     pub async fn get_card_performance(&self, card: &Card) -> Result<Performance> {
-        let card_hash = card.card_hash.clone();
         let row = sqlx::query!(
             r#"
             SELECT
@@ -170,7 +165,7 @@ impl DB {
             FROM cards
             WHERE card_hash = ?
             "#,
-            card_hash
+            card.card_hash
         )
         .fetch_one(&self.pool)
         .await?;
@@ -276,9 +271,7 @@ impl DB {
 
         while let Some(row) = rows.try_next().await? {
             stats.total_cards_in_db += 1;
-            let card_hash = row.card_hash.clone();
-
-            let card = match card_hashes.get(&card_hash) {
+            let card = match card_hashes.get(&row.card_hash) {
                 Some(card) => card,
                 None => continue,
             };
