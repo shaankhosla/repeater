@@ -78,6 +78,13 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
         }
 
         let line = trimmed.unwrap();
+        if line == "---" {
+            return (
+                join_nonempty(question_lines),
+                join_nonempty(answer_lines),
+                join_nonempty(cloze_lines),
+            );
+        }
 
         if let Some(rest) = line.strip_prefix("Q:") {
             section = Section::Question;
@@ -332,10 +339,7 @@ mod tests {
         let contents = "C:\nRegion: [`us-east-2`]\n\nLocation: [Ohio]\n\n---\n\n";
         let (question, _, cloze) = parse_card_lines(contents);
         assert!(question.is_none());
-        assert_eq!(
-            "Region: [`us-east-2`]\n\nLocation: [Ohio]\n\n---",
-            cloze.unwrap()
-        );
+        assert_eq!("Region: [`us-east-2`]\n\nLocation: [Ohio]", cloze.unwrap());
     }
 
     #[test]

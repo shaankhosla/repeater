@@ -21,15 +21,14 @@
 
 ## Features
 
-- Plain-text decks: recurse through directories of `.md` files; each `Q:/A:` or `C:` block is parsed into a flashcard.
-- Content-addressed cards: cards are keyed by a Blake3 hash of their text, so edits automatically reset their progress.
-- FSRS scheduling: intervals, stability, and difficulty are recalculated on every review and stored in SQLite.
-- Terminal UX: `repeat drill` renders cards with ratatui; `repeat create` launches an editor dedicated to card capture.
-- Progress at a glance: `repeat check` prints totals, due/overdue counts, and a 7-day due histogram.
+-  Cards live in `.md` files, so edit them using your favorite markdown editor, back them up with version control, and create them alongside regular notes..
+- Progress is tracked with hash of card content, so edits automatically reset their progress.
+- Free Spaced Repetition Scheduler (FSRS), a state-of-the-art algorithm targeting 90% recall, automatically schedules reviews for you.
+- Terminal UX: `repeat drill` renders cards with ratatui; `repeat create` launches an editor dedicated to card capture; `repeat check` displays progress at a glance.
 
 ## Installation
 
-### Install script (macOS + Linux)
+### Install script (macOS, Linux, Windows)
 
 Use the included `install.sh` to grab the latest GitHub release for your platform, verify its checksum, and place the binary in `/usr/local/bin` (you may be prompted for sudo):
 
@@ -37,7 +36,7 @@ Use the included `install.sh` to grab the latest GitHub release for your platfor
 curl -fsSL https://raw.githubusercontent.com/shaankhosla/repeat/main/install.sh | bash
 ```
 
-### Homebrew (macOS + Linux)
+### Homebrew (macOS)
 
 ```
 brew tap shaankhosla/homebrew-tap
@@ -54,6 +53,9 @@ brew install repeat
 
    C: Speech is [produced] in [Broca's] area.
    ```
+
+Alternatively, use the built-in editor with `repeat create cards/neuro.md`.
+
 
 2. Index the cards and start a session:
 
@@ -85,7 +87,7 @@ flashcards/
       ...
 ```
 
-Cards live in ordinary Markdown. `repeat` scans for tagged sections and turns them into flashcards.
+Cards live in ordinary Markdown. `repeat` scans for tagged sections and turns them into flashcards. This means that you can embed your active recall content alongside your regular notes using your favorite markdown editor, such as Obsidian. Also you can leverage all of the normal advantages of using markdown files, such as using version control to back them up.
 
 - **Basic cards**
 
@@ -100,7 +102,13 @@ Cards live in ordinary Markdown. `repeat` scans for tagged sections and turns th
   C: The [order] of a group is [the cardinality of its underlying set].
   ```
 
-Multi-line content is supported.
+
+### Parsing Logic
+
+- Cards are detected by the presence of a `Q:/A:` or `C:` block. The end of the card is indicated by a horizontal rule (`---`), or the start of another card.
+- Cards are hashed with Blake3; modifying the text produces a new hash and resets that card's performance history.
+- Metadata lives in `cards.db` under your OS data directory (for example, `~/Library/Application Support/repeat/cards.db` on macOS). Delete the file to discard history; the Markdown decks remain untouched.
+- Multi-line content is supported.
 
 ## Commands
 
@@ -125,11 +133,6 @@ Launch the capture editor for a specific Markdown file (it is created if missing
 
 Re-index the referenced decks and emit counts for total, new, due, overdue, and upcoming cards so you can gauge the workload before drilling.
 
-## Data & Scheduling
-
-- Cards are hashed with Blake3; modifying the text produces a new hash and resets that card's performance history.
-- Scheduling uses FSRS weights defined in `src/fsrs.rs`, clamping intervals between 1 and 256 days and targeting 90% recall.
-- Metadata lives in `cards.db` under your OS data directory (for example, `~/Library/Application Support/repeat/cards.db` on macOS). Delete the file to discard history; the Markdown decks remain untouched.
 
 ## Development
 

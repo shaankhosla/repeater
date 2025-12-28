@@ -28,6 +28,7 @@ Q: What is a Docker image?
 A: A filesystem snapshot used to create a container.
 
 ---
+These are now notes and they shouldn't get parsed out anywhere.
 
 Q: What is a Docker container?
 A: A running instance of an image.
