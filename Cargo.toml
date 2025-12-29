@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 ratatui = "0.30.0"
-crossterm = "0.28"
+crossterm = "0.29"
 anyhow = "1.0.100"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }
 directories = "6.0.0"
