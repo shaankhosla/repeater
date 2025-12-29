@@ -51,6 +51,7 @@ brew install repeat
    You can put your normal notes here, `repeat` will ignore them.
    Once a "Q:,A:,C:" block is detected, it will automatically
    turn it into a card.
+
    Q: What does a synaptic vesicle store?
    A: Neurotransmitters awaiting release.
 
