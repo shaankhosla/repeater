@@ -20,6 +20,8 @@ chrono = "0.4.42"
 futures = "0.3.31"
 ignore = "0.4.25"
 pulldown-cmark = { version = "0.13.0", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
+reqwest = { version = "0.11", features = ["json"] }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }

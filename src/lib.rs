@@ -1,5 +1,6 @@
 pub mod card;
 pub mod check;
+pub mod check_version;
 pub mod create;
 pub mod crud;
 pub mod drill;
