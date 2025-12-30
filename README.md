@@ -28,17 +28,17 @@
 
 ## Installation
 
+### Install script (Linux & macOS) - Recommended
+
+```
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shaankhosla/repeat/releases/latest/download/repeat-installer.sh | sh
+```
+
 ### Homebrew (macOS)
 
 ```
 brew tap shaankhosla/homebrew-tap
 brew install repeat
-```
-
-### Install script (Linux & macOS)
-
-```
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shaankhosla/repeat/releases/latest/download/repeat-installer.sh | sh
 ```
 
 ### Windows (PowerShell)
