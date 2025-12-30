@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT\n            last_prompted_at        AS \"last_prompted_at?: chrono::DateTime<chrono::Utc>\",\n            last_version_check_at   AS \"last_version_check_at?: chrono::DateTime<chrono::Utc>\"\n        FROM version_update\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_prompted_at?: chrono::DateTime<chrono::Utc>",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_version_check_at?: chrono::DateTime<chrono::Utc>",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "063c7b23d9bfbc63915d193b65cf1cc9fbb4a1d1e731231b22efd275c4ad5299"
+}

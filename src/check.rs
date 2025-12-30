@@ -34,9 +34,8 @@ pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
     let card_hashes = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
     let stats = db.collection_stats(&card_hashes).await?;
-
     if let Some(notification) = version_check.await.ok().flatten() {
-        prompt_for_new_version(&db, &notification);
+        prompt_for_new_version(db, &notification).await;
     }
 
     render_dashboard(&stats)?;

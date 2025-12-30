@@ -52,18 +52,20 @@ impl DB {
         FROM version_update
         "#
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(stats)
+        Ok(stats.unwrap_or_default())
     }
     pub async fn update_last_prompted_at(&self) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query!(
             r#"
-        UPDATE version_update
-        SET last_prompted_at = ?
-        "#,
+            INSERT INTO version_update (id, last_prompted_at)
+            VALUES (1, $1)
+            ON CONFLICT (id)
+            DO UPDATE SET last_prompted_at = EXCLUDED.last_prompted_at
+            "#,
             now
         )
         .execute(&self.pool)
@@ -76,9 +78,11 @@ impl DB {
         let now = chrono::Utc::now().to_rfc3339();
         sqlx::query!(
             r#"
-        UPDATE version_update
-        SET last_version_check_at = ?
-        "#,
+            INSERT INTO version_update (id, last_version_check_at)
+            VALUES (1, $1)
+            ON CONFLICT (id)
+            DO UPDATE SET last_version_check_at = EXCLUDED.last_version_check_at
+            "#,
             now
         )
         .execute(&self.pool)

@@ -8,7 +8,8 @@ use std::{
 use anyhow::Result;
 use serde::Deserialize;
 
-pub const ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);
+// pub const ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);
+pub const ONE_DAY: Duration = Duration::from_secs(5);
 pub const ONE_WEEK: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 
 #[derive(Deserialize, Debug)]
@@ -22,7 +23,7 @@ pub struct VersionNotification {
     pub latest_version: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VersionUpdateStats {
     pub last_prompted_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_version_check_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -66,7 +67,7 @@ async fn get_latest() -> Result<Release> {
     let release: Release = client
         .get("https://api.github.com/repos/shaankhosla/repeat/releases/latest")
         .header("User-Agent", USER_AGENT)
-        .timeout(Duration::from_millis(600))
+        .timeout(Duration::from_millis(700))
         .send()
         .await?
         .error_for_status()?

@@ -3,6 +3,8 @@
 ### 💼 Other
 
 - Update README.md
+- Version
+- Version
 ## [0.0.20] - 2025-12-30
 
 ### 💼 Other

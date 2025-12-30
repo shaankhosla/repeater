@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO version_update (id, last_version_check_at)\n            VALUES (1, $1)\n            ON CONFLICT (id)\n            DO UPDATE SET last_version_check_at = EXCLUDED.last_version_check_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "f575adc8a320bb96386a6023e0e4f1fbb1089bf70d37a14921b4fa4c1f75214e"
+}
