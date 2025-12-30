@@ -18,3 +18,6 @@ check:
 
 drill:
     cargo run -- drill /Users/shaankhosla/Desktop/sample_repeat_cards/
+
+import:
+    cargo run -- import "/Users/shaankhosla/Downloads/All Decks.apkg" "/Users/shaankhosla/Desktop/sample_repeat_cards/"

@@ -38,6 +38,7 @@ impl DB {
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
 
+        sqlx::query("SELECT 1").execute(&pool).await?;
         Ok(Self { pool })
     }
 

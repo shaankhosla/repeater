@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 use repeat::crud::DB;
-use repeat::{check, create, drill};
+use repeat::{check, create, drill, import};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -28,6 +28,12 @@ enum Args {
     Create {
         /// Card path
         path: String,
+    },
+    Import {
+        /// Anki export path
+        anki_path: String,
+        /// Where to export to
+        export_path: String,
     },
 }
 
@@ -57,6 +63,16 @@ async fn main() {
         Args::Create { path } => {
             let card_path = PathBuf::from(path);
             if let Err(err) = create::run(&db, card_path).await {
+                eprintln!("error: {err}");
+            }
+        }
+        Args::Import {
+            anki_path,
+            export_path,
+        } => {
+            let anki_path = PathBuf::from(anki_path);
+            let export_path = PathBuf::from(export_path);
+            if let Err(err) = import::run(&db, &anki_path, &export_path).await {
                 eprintln!("error: {err}");
             }
         }
