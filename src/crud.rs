@@ -11,12 +11,14 @@ use std::str::FromStr;
 use anyhow::anyhow;
 
 use crate::card::Card;
+use crate::check_version::VersionUpdateStats;
 use crate::fsrs::Performance;
 use crate::fsrs::ReviewStatus;
 use crate::fsrs::ReviewedPerformance;
 use crate::fsrs::update_performance;
 use crate::stats::CardStats;
 
+#[derive(Clone)]
 pub struct DB {
     pool: SqlitePool,
 }
@@ -39,6 +41,50 @@ impl DB {
         sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self { pool })
+    }
+    pub async fn get_version_update_information(&self) -> Result<VersionUpdateStats> {
+        let stats = sqlx::query_as!(
+            VersionUpdateStats,
+            r#"
+        SELECT
+            last_prompted_at        AS "last_prompted_at?: chrono::DateTime<chrono::Utc>",
+            last_version_check_at   AS "last_version_check_at?: chrono::DateTime<chrono::Utc>"
+        FROM version_update
+        "#
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(stats)
+    }
+    pub async fn update_last_prompted_at(&self) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query!(
+            r#"
+        UPDATE version_update
+        SET last_prompted_at = ?
+        "#,
+            now
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn update_last_version_check_at(&self) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query!(
+            r#"
+        UPDATE version_update
+        SET last_version_check_at = ?
+        "#,
+            now
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
     pub async fn add_card(&self, card: &Card) -> Result<()> {

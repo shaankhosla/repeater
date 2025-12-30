@@ -29,14 +29,14 @@ use ratatui::{
 };
 
 pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
-    let (version_notification, card_hashes_result) =
-        tokio::join!(check_version(db), register_all_cards(db, paths));
+    let version_check = tokio::spawn(check_version(db.clone()));
 
-    let card_hashes = card_hashes_result?;
+    let card_hashes = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
     let stats = db.collection_stats(&card_hashes).await?;
-    if let Some(notification) = version_notification {
-        prompt_for_new_version(&notification)
+
+    if let Some(notification) = version_check.await.ok().flatten() {
+        prompt_for_new_version(&db, &notification);
     }
 
     render_dashboard(&stats)?;

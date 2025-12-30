@@ -8,6 +8,9 @@ use std::{
 use anyhow::Result;
 use serde::Deserialize;
 
+pub const ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);
+pub const ONE_WEEK: Duration = Duration::from_secs(60 * 60 * 24 * 7);
+
 #[derive(Deserialize, Debug)]
 struct Release {
     tag_name: String,
@@ -19,9 +22,30 @@ pub struct VersionNotification {
     pub latest_version: String,
 }
 
-pub async fn check_version(_db: &DB) -> Option<VersionNotification> {
+#[derive(Debug, Clone)]
+pub struct VersionUpdateStats {
+    pub last_prompted_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_version_check_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+pub async fn check_version(db: DB) -> Option<VersionNotification> {
+    let now = chrono::Utc::now();
+    let version_update_stats = db.get_version_update_information().await.ok()?;
+
+    if let Some(last_check) = version_update_stats.last_version_check_at
+        && now.signed_duration_since(last_check) < chrono::Duration::from_std(ONE_DAY).ok()?
+    {
+        return None;
+    }
+    if let Some(last_prompted) = version_update_stats.last_prompted_at
+        && now.signed_duration_since(last_prompted) < chrono::Duration::from_std(ONE_WEEK).ok()?
+    {
+        return None;
+    }
+
     let current_version = env!("CARGO_PKG_VERSION");
     let latest_release = get_latest().await.ok()?;
+    db.update_last_version_check_at().await.ok();
 
     if normalize_version(&latest_release.tag_name) == normalize_version(current_version) {
         return None;
@@ -34,6 +58,7 @@ pub async fn check_version(_db: &DB) -> Option<VersionNotification> {
 }
 
 async fn get_latest() -> Result<Release> {
+    let st_time = std::time::Instant::now();
     let client = reqwest::Client::new();
 
     const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -48,10 +73,12 @@ async fn get_latest() -> Result<Release> {
         .json()
         .await?;
 
+    dbg!("Checked for updates in {}ms", st_time.elapsed().as_millis());
     Ok(release)
 }
 
-pub fn prompt_for_new_version(notification: &VersionNotification) {
+pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification) {
+    db.update_last_prompted_at().await.ok();
     let dim = "\x1b[2m";
     let reset = "\x1b[0m";
     let cyan = "\x1b[36m";
