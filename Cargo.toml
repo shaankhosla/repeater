@@ -7,12 +7,6 @@ description="Spaced repetition, in your terminal"
 homepage = "https://github.com/shaankhosla/repeat"
 authors = ["shaankhosla"]
 
-[package.metadata.wix]
-upgrade-guid = "187F6DB3-5E26-457D-85CF-6B5E630F1ABA"
-path-guid = "23F2849C-8409-4C86-842E-1B3B5129CDCA"
-license = false
-eula = false
-
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 ratatui = "0.30.0"
