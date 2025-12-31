@@ -23,5 +23,5 @@ import:
     cargo run -- import "/Users/shaankhosla/Downloads/All Decks.apkg" "/Users/shaankhosla/Desktop/anki_export/"
 
 release:
-    precommit
+    just precommit
     ./scripts/release.sh
