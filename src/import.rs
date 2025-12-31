@@ -29,11 +29,7 @@ enum ModelKind {
     Cloze,
 }
 
-#[derive(Clone, Copy)]
-struct ModelInfo {
-    kind: ModelKind,
-}
-
+#[derive(Clone, Debug)]
 struct CardRecord {
     deck_id: i64,
     model_id: i64,
@@ -82,7 +78,7 @@ fn extract_collection_db(apkg: &Path) -> Result<NamedTempFile> {
 
     let mut entry = zip
         .by_name("collection.anki21")
-        .context("apkg does not contain collection.anki2")?;
+        .context("apkg does not contain collection.anki21, the newer export format DB")?;
 
     let mut temp =
         NamedTempFile::new().context("failed to create temporary file for sqlite database")?;
@@ -94,7 +90,7 @@ fn extract_collection_db(apkg: &Path) -> Result<NamedTempFile> {
 
 async fn load_metadata(
     pool: &SqlitePool,
-) -> Result<(HashMap<i64, DeckInfo>, HashMap<i64, ModelInfo>)> {
+) -> Result<(HashMap<i64, DeckInfo>, HashMap<i64, ModelKind>)> {
     let row = sqlx::query("SELECT decks, models FROM col LIMIT 1")
         .fetch_one(pool)
         .await
@@ -112,6 +108,7 @@ fn parse_decks(json: &str) -> Result<HashMap<i64, DeckInfo>> {
     if let Some(map) = value.as_object() {
         for deck in map.values() {
             if let Some(id) = deck.get("id").and_then(|v| v.as_i64()) {
+                // name could be Data Science::clustering
                 let name = deck.get("name").and_then(|v| v.as_str()).unwrap_or("Deck");
                 decks.insert(
                     id,
@@ -126,7 +123,7 @@ fn parse_decks(json: &str) -> Result<HashMap<i64, DeckInfo>> {
     Ok(decks)
 }
 
-fn parse_models(json: &str) -> Result<HashMap<i64, ModelInfo>> {
+fn parse_models(json: &str) -> Result<HashMap<i64, ModelKind>> {
     let value: Value = serde_json::from_str(json).context("failed to parse models json")?;
     let mut models = HashMap::new();
     if let Some(map) = value.as_object() {
@@ -136,7 +133,7 @@ fn parse_models(json: &str) -> Result<HashMap<i64, ModelInfo>> {
                     1 => ModelKind::Cloze,
                     _ => ModelKind::Basic,
                 };
-                models.insert(id, ModelInfo { kind });
+                models.insert(id, kind);
             }
         }
     }
@@ -163,27 +160,30 @@ async fn load_cards(pool: &SqlitePool) -> Result<Vec<CardRecord>> {
         let deck_id: i64 = row.try_get("did")?;
         let ord: i64 = row.try_get("ord")?;
         let model_id: i64 = row.try_get("mid")?;
+
+        //"Examples of supervised methods with built-in feature selection\u{1f}Decision trees<br><div>LASSO (linear regression with L1 regularization)</div>\u{1f}<a href=\"https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/\">https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/</a>\u{1f}"
         let fields_raw: String = row.try_get("flds")?;
-        cards.push(CardRecord {
+        let card = CardRecord {
             deck_id,
             model_id,
             ord,
             fields: split_fields(&fields_raw),
-        });
+        };
+        cards.push(card);
     }
     Ok(cards)
 }
 
 fn build_exports(
     cards: Vec<CardRecord>,
-    models: &HashMap<i64, ModelInfo>,
+    models: &HashMap<i64, ModelKind>,
 ) -> HashMap<i64, Vec<String>> {
     let mut per_deck: HashMap<i64, Vec<String>> = HashMap::new();
     for card in cards {
         let Some(model) = models.get(&card.model_id) else {
             continue;
         };
-        let entry = match model.kind {
+        let entry = match model {
             ModelKind::Basic => basic_entry(&card.fields, card.ord),
             ModelKind::Cloze => cloze_entry(&card.fields),
         };
@@ -311,15 +311,9 @@ fn format_section(label: &str, value: &str) -> Option<String> {
         return None;
     }
     let mut out = String::new();
-    if trimmed.contains('\n') {
-        out.push_str(label);
-        out.push_str(":\n");
-        out.push_str(trimmed);
-    } else {
-        out.push_str(label);
-        out.push_str(": ");
-        out.push_str(trimmed);
-    }
+    out.push_str(label);
+    out.push_str(": ");
+    out.push_str(trimmed);
     out.push('\n');
     Some(out)
 }
