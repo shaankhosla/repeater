@@ -55,6 +55,12 @@ fn validate_paths(anki_path: &Path, export_path: &Path) -> Result<()> {
     if !anki_path.exists() {
         return Err(anyhow!("Anki path does not exist: {}", anki_path.display()));
     }
+    if !anki_path.is_file() || anki_path.extension() != Some("apkg".as_ref()) {
+        return Err(anyhow!(
+            "Anki path does not point to an apkg file: {}",
+            anki_path.display()
+        ));
+    }
     if !export_path.exists() {
         return Err(anyhow!(
             "Export path does not exist: {}",
