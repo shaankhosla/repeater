@@ -20,4 +20,5 @@ drill:
     cargo run -- drill /Users/shaankhosla/Desktop/sample_repeat_cards/
 
 release:
-	./scripts/release.sh
+    precommit
+    ./scripts/release.sh

@@ -58,7 +58,6 @@ pub async fn check_version(db: DB) -> Option<VersionNotification> {
 }
 
 async fn get_latest() -> Result<Release> {
-    let st_time = std::time::Instant::now();
     let client = reqwest::Client::new();
 
     const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -73,7 +72,6 @@ async fn get_latest() -> Result<Release> {
         .json()
         .await?;
 
-    dbg!("Checked for updates in {}ms", st_time.elapsed().as_millis());
     Ok(release)
 }
 
