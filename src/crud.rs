@@ -39,8 +39,6 @@ impl DB {
             .connect_with(options)
             .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
-
-        sqlx::query("SELECT 1").execute(&pool).await?;
         Ok(Self { pool })
     }
     pub async fn get_version_update_information(&self) -> Result<VersionUpdateStats> {
