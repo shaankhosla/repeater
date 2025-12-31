@@ -1,6 +1,6 @@
 [package]
 name = "repeat"
-version = "0.0.20"
+version = "0.0.21"
 edition = "2024"
 repository = "https://github.com/shaankhosla/repeat"
 description="Spaced repetition, in your terminal"
