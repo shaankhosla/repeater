@@ -407,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn collects_cards_from_directory() {
-        let db = DB::new()
+        let db = DB::new_in_memory()
             .await
             .expect("Failed to connect to or initialize database");
         let dir_path = PathBuf::from("test_data");
