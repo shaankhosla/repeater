@@ -56,19 +56,21 @@ struct DrillState<'a> {
 }
 struct LastAction {
     action: ReviewStatus,
-    show_again: f64,
+    show_again_duration: f64,
 }
 impl LastAction {
     fn print(&self) -> String {
         let mut show_again = String::new();
-        if self.show_again <= (30 / (60 * 24)) as f64 {
+        if self.show_again_duration <= 15.0 / (60.0 * 24.0) {
+            show_again.push_str("<15 mins");
+        } else if self.show_again_duration <= 30.0 / (60.0 * 24.0) {
             show_again.push_str("<30 mins");
-        } else if self.show_again <= 0.5 {
+        } else if self.show_again_duration <= 0.5 {
             show_again.push_str("<12 hours");
-        } else if self.show_again <= 1.0 {
+        } else if self.show_again_duration <= 1.0 {
             show_again.push_str("<1 day");
         } else {
-            show_again.push_str(format!("{} days", self.show_again as i64).as_str());
+            show_again.push_str(format!("{} days", self.show_again_duration as i64).as_str());
         }
         format!(" {} (See again in {})", self.action.label(), show_again,)
     }
@@ -105,15 +107,18 @@ impl<'a> DrillState<'a> {
         let current_card = self
             .current_card()
             .expect("card should exist when handling review");
-        let show_again = self
+        let show_again_duration = self
             .db
             .update_card_performance(&current_card, action)
             .await?;
-        if action == ReviewStatus::Fail {
+        if action == ReviewStatus::Fail || show_again_duration < 20.0 / (60.0 * 24.0) {
             self.redo_cards.push(current_card.clone());
         }
 
-        self.last_action = Some(LastAction { action, show_again });
+        self.last_action = Some(LastAction {
+            action,
+            show_again_duration,
+        });
         self.current_idx += 1;
         self.show_answer = false;
         Ok(())
@@ -167,7 +172,10 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
                             state.cards.len()
                         )),
                         Theme::bullet(),
-                        Span::styled(format!("{} redo", state.redo_cards.len()), Theme::muted()),
+                        Span::styled(
+                            format!("{} coming again", state.redo_cards.len()),
+                            Theme::muted(),
+                        ),
                         Theme::bullet(),
                         Span::styled(card.file_path.display().to_string(), Theme::muted()),
                     ]);

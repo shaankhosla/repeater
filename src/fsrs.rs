@@ -10,6 +10,9 @@ const C: f64 = -0.5;
 const TARGET_RECALL: f64 = 0.9;
 const MIN_INTERVAL: f64 = 1.0;
 const MAX_INTERVAL: f64 = 256.0;
+const MINUTES_PER_DAY: f64 = 60.0 * 24.0;
+const LEARNING_A_INTERVAL_MINS: i64 = 1;
+const LEARNING_B_INTERVAL_MINS: i64 = 10;
 
 pub fn calculate_recall(interval: f64, stability: f64) -> f64 {
     (1.0 + F * (interval / stability)).powf(C)
@@ -144,7 +147,7 @@ pub fn update_performance(
 ) -> Performance {
     let reviewed = fsrs_schedule(perf, review_status, reviewed_at);
 
-    match (perf, review_status) {
+    let mut performance = match (perf, review_status) {
         // New
         (Performance::New, ReviewStatus::Pass) => Performance::LearningB(reviewed),
         (Performance::New, ReviewStatus::Fail) => Performance::LearningA(reviewed),
@@ -160,7 +163,10 @@ pub fn update_performance(
         // Review
         (Performance::Review(_), ReviewStatus::Fail) => Performance::LearningB(reviewed),
         (Performance::Review(_), ReviewStatus::Pass) => Performance::Review(reviewed),
-    }
+    };
+
+    apply_learning_intervals(&mut performance);
+    performance
 }
 
 pub fn fsrs_schedule(
@@ -204,11 +210,34 @@ pub fn fsrs_schedule(
     }
 }
 
+fn apply_learning_intervals(perf: &mut Performance) {
+    let minutes = match perf {
+        Performance::LearningA(_) => Some(LEARNING_A_INTERVAL_MINS),
+        Performance::LearningB(_) => Some(LEARNING_B_INTERVAL_MINS),
+        Performance::Review(_) | Performance::New => None,
+    };
+
+    let Some(minutes) = minutes else {
+        return;
+    };
+
+    let reviewed = match perf {
+        Performance::LearningA(r) => r,
+        Performance::LearningB(r) => r,
+        Performance::Review(_) | Performance::New => unreachable!(),
+    };
+
+    reviewed.interval_raw = minutes as f64 / MINUTES_PER_DAY;
+    reviewed.interval_days = 0;
+    reviewed.due_date = reviewed.last_reviewed_at + Duration::minutes(minutes);
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::{
-        MAX_INTERVAL, MIN_INTERVAL, Performance, ReviewStatus, ReviewedPerformance, fsrs_schedule,
+        LEARNING_A_INTERVAL_MINS, LEARNING_B_INTERVAL_MINS, MAX_INTERVAL, MIN_INTERVAL, Performance,
+        ReviewStatus, ReviewedPerformance, fsrs_schedule, update_performance,
     };
 
     use chrono::Duration;
@@ -314,5 +343,41 @@ mod tests {
         assert_eq!(performance.interval_days, 1);
         assert!(approx_eq(performance.difficulty, 9.9337));
         assert!(approx_eq(performance.stability, 0.148424));
+    }
+
+    #[test]
+    fn learning_a_interval_matches_one_minute() {
+        let reviewed_at = chrono::Utc::now();
+        let performance = update_performance(Performance::New, ReviewStatus::Fail, reviewed_at);
+        let Performance::LearningA(reviewed) = performance else {
+            panic!("expected learning A stage");
+        };
+        assert_eq!(
+            reviewed.due_date,
+            reviewed_at + Duration::minutes(LEARNING_A_INTERVAL_MINS)
+        );
+        assert_eq!(reviewed.interval_days, 0);
+        assert!(approx_eq(
+            reviewed.interval_raw,
+            LEARNING_A_INTERVAL_MINS as f64 / (60.0 * 24.0)
+        ));
+    }
+
+    #[test]
+    fn learning_b_interval_matches_ten_minutes() {
+        let reviewed_at = chrono::Utc::now();
+        let performance = update_performance(Performance::New, ReviewStatus::Pass, reviewed_at);
+        let Performance::LearningB(reviewed) = performance else {
+            panic!("expected learning B stage");
+        };
+        assert_eq!(
+            reviewed.due_date,
+            reviewed_at + Duration::minutes(LEARNING_B_INTERVAL_MINS)
+        );
+        assert_eq!(reviewed.interval_days, 0);
+        assert!(approx_eq(
+            reviewed.interval_raw,
+            LEARNING_B_INTERVAL_MINS as f64 / (60.0 * 24.0)
+        ));
     }
 }
