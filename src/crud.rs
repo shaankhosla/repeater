@@ -257,39 +257,51 @@ impl DB {
     ) -> Result<Vec<Card>> {
         let now = chrono::Utc::now().to_rfc3339();
 
+        // most overdue cards first
+        // then cards due today
+        // then new cards
         let mut rows = sqlx::query!(
             r#"
-            SELECT card_hash, review_count as "review_count!: i64"
-            FROM cards
-            WHERE due_date <= ? OR due_date IS NULL
-            "#,
+        SELECT card_hash, review_count as "review_count!: i64"
+        FROM cards
+        WHERE due_date <= ? OR due_date IS NULL
+        ORDER BY
+            CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+            due_date ASC
+        "#,
             now
         )
         .fetch(&self.pool);
-        let mut cards = Vec::new();
+
+        let mut cards: Vec<Card> = Vec::new();
         let mut num_new_cards = 0;
+
         while let Some(row) = rows.try_next().await? {
-            let card_hash = row.card_hash;
-            if !card_hashes.contains_key(&card_hash) {
+            if !card_hashes.contains_key(&row.card_hash) {
                 continue;
             }
 
-            if let Some(card) = card_hashes.get(&card_hash) {
-                cards.push(card.clone());
-                if row.review_count == 0 {
-                    num_new_cards += 1;
-                }
+            let is_new = row.review_count == 0;
+
+            if is_new
+                && let Some(limit) = new_card_limit
+                && num_new_cards >= limit
+            {
+                continue;
             }
 
-            if let Some(card_limit) = card_limit
-                && cards.len() >= card_limit
-            {
-                break;
-            }
-            if let Some(new_card_limit) = new_card_limit
-                && num_new_cards >= new_card_limit
-            {
-                break;
+            if let Some(card) = card_hashes.get(&row.card_hash) {
+                cards.push(card.clone());
+
+                if is_new {
+                    num_new_cards += 1;
+                }
+
+                if let Some(limit) = card_limit
+                    && cards.len() >= limit
+                {
+                    break;
+                }
             }
         }
 
