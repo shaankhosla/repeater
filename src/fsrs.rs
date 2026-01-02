@@ -13,7 +13,6 @@ const MAX_INTERVAL: f64 = 256.0;
 pub const MINUTES_PER_DAY: f64 = 60.0 * 24.0;
 const LEARNING_A_INTERVAL_MINS: i64 = 1;
 const LEARNING_B_INTERVAL_MINS: i64 = 10;
-const GRADUATING_INTERVAL_DAYS: i64 = 1;
 
 pub fn calculate_recall(interval: f64, stability: f64) -> f64 {
     (1.0 + F * (interval / stability)).powf(C)
@@ -101,14 +100,19 @@ impl ReviewStatus {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ReviewedPerformance {
-    pub last_reviewed_at: chrono::DateTime<chrono::Utc>,
+pub struct FsrsStats {
     pub stability: f64,
     pub difficulty: f64,
+    pub scheduling_stats: SchedulingStats,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SchedulingStats {
+    pub last_reviewed_at: chrono::DateTime<chrono::Utc>,
+    pub review_count: usize,
     pub interval_raw: f64,
     pub interval_days: usize,
     pub due_date: chrono::DateTime<chrono::Utc>,
-    pub review_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, sqlx::Type)]
@@ -126,9 +130,9 @@ pub enum ReviewStage {
 pub enum Performance {
     #[default]
     New,
-    LearningA(ReviewedPerformance),
-    LearningB(ReviewedPerformance),
-    Review(ReviewedPerformance),
+    LearningA(SchedulingStats),
+    LearningB(SchedulingStats),
+    Review(FsrsStats),
 }
 impl Performance {
     pub fn stage(&self) -> ReviewStage {
@@ -141,57 +145,80 @@ impl Performance {
     }
 }
 
+fn learning_stats(
+    reviewed_at: chrono::DateTime<chrono::Utc>,
+    review_count: usize,
+    interval_mins: i64,
+) -> SchedulingStats {
+    SchedulingStats {
+        last_reviewed_at: reviewed_at,
+        review_count,
+        interval_raw: interval_mins as f64 / MINUTES_PER_DAY,
+        interval_days: 0,
+        due_date: reviewed_at + Duration::minutes(interval_mins),
+    }
+}
+
+fn next_review_count(old: Option<&SchedulingStats>) -> usize {
+    old.map(|s| s.review_count + 1).unwrap_or(1)
+}
+
 pub fn update_performance(
     perf: Performance,
     review_status: ReviewStatus,
     reviewed_at: chrono::DateTime<chrono::Utc>,
 ) -> Performance {
-    let reviewed = fsrs_schedule(perf, review_status, reviewed_at);
+    use Performance::*;
+    use ReviewStatus::*;
 
-    let mut performance = match (perf, review_status) {
-        // New
-        (Performance::New, ReviewStatus::Pass) => Performance::LearningB(reviewed),
-        (Performance::New, ReviewStatus::Fail) => Performance::LearningA(reviewed),
+    match (perf, review_status) {
+        // ── New ──────────────────────────────────────────────
+        (New, Pass) => LearningB(learning_stats(reviewed_at, 1, LEARNING_B_INTERVAL_MINS)),
+        (New, Fail) => LearningA(learning_stats(reviewed_at, 1, LEARNING_A_INTERVAL_MINS)),
 
-        // Learning A
-        (Performance::LearningA(_), ReviewStatus::Fail) => Performance::LearningA(reviewed),
-        (Performance::LearningA(_), ReviewStatus::Pass) => Performance::LearningB(reviewed),
+        // ── Learning A ───────────────────────────────────────
+        (LearningA(old), Fail) => LearningA(learning_stats(
+            reviewed_at,
+            next_review_count(Some(&old)),
+            LEARNING_A_INTERVAL_MINS,
+        )),
+        (LearningA(old), Pass) => LearningB(learning_stats(
+            reviewed_at,
+            next_review_count(Some(&old)),
+            LEARNING_B_INTERVAL_MINS,
+        )),
 
-        // Learning B
-        (Performance::LearningB(_), ReviewStatus::Pass) => Performance::Review(reviewed),
-        (Performance::LearningB(_), ReviewStatus::Fail) => Performance::LearningA(reviewed),
+        // ── Learning B ───────────────────────────────────────
+        (LearningB(old), Fail) => LearningA(learning_stats(
+            reviewed_at,
+            next_review_count(Some(&old)),
+            LEARNING_A_INTERVAL_MINS,
+        )),
+        (perf @ LearningB(_), Pass) => Review(fsrs_schedule(perf, Pass, reviewed_at)),
 
-        // Review
-        (Performance::Review(_), ReviewStatus::Fail) => Performance::LearningB(reviewed),
-        (Performance::Review(_), ReviewStatus::Pass) => Performance::Review(reviewed),
-    };
-
-    let just_graduated = matches!(perf, Performance::LearningB(r) if r.review_count == 1)
-        && matches!(performance, Performance::Review(_))
-        && review_status == ReviewStatus::Pass;
-
-    apply_learning_intervals(&mut performance);
-
-    if just_graduated {
-        apply_graduating_interval(&mut performance);
+        // ── Review ───────────────────────────────────────────
+        (Review(old_fsrs), Fail) => LearningB(learning_stats(
+            reviewed_at,
+            next_review_count(Some(&old_fsrs.scheduling_stats)),
+            LEARNING_B_INTERVAL_MINS,
+        )),
+        (perf @ Review(_), Pass) => Review(fsrs_schedule(perf, Pass, reviewed_at)),
     }
-    performance
 }
-
 pub fn fsrs_schedule(
     perf: Performance,
     review_status: ReviewStatus,
     reviewed_at: chrono::DateTime<chrono::Utc>,
-) -> ReviewedPerformance {
-    let (stability, difficulty, review_count): (f64, f64, usize) = match perf {
-        Performance::New => (
+) -> FsrsStats {
+    let (stability, difficulty, prev_review_count): (f64, f64, usize) = match perf {
+        Performance::New | Performance::LearningA(_) | Performance::LearningB(_) => (
             initial_stability(review_status),
             initial_difficulty(review_status),
             0,
         ),
-        Performance::LearningA(rp) | Performance::LearningB(rp) | Performance::Review(rp) => {
+        Performance::Review(rp) => {
             let elapsed_days = reviewed_at
-                .signed_duration_since(rp.last_reviewed_at)
+                .signed_duration_since(rp.scheduling_stats.last_reviewed_at)
                 .num_seconds() as f64
                 / 86_400.0;
 
@@ -199,7 +226,7 @@ pub fn fsrs_schedule(
             let stability = calculate_stability(rp.difficulty, rp.stability, recall, review_status);
             let difficulty = new_difficulty(rp.difficulty, review_status);
 
-            (stability, difficulty, rp.review_count)
+            (stability, difficulty, rp.scheduling_stats.review_count)
         }
     };
     let interval_raw: f64 = calulate_interval(TARGET_RECALL, stability);
@@ -208,44 +235,17 @@ pub fn fsrs_schedule(
     let interval_days: usize = interval_clamped as usize;
     let interval_duration: Duration = Duration::days(interval_clamped as i64);
     let due_date: chrono::DateTime<chrono::Utc> = reviewed_at + interval_duration;
-    ReviewedPerformance {
+    let scheduling_stats = SchedulingStats {
         last_reviewed_at: reviewed_at,
-        stability,
-        difficulty,
+        review_count: prev_review_count + 1,
         interval_raw,
         interval_days,
         due_date,
-        review_count: review_count + 1,
-    }
-}
-
-fn apply_learning_intervals(perf: &mut Performance) {
-    let minutes = match perf {
-        Performance::LearningA(_) => Some(LEARNING_A_INTERVAL_MINS),
-        Performance::LearningB(_) => Some(LEARNING_B_INTERVAL_MINS),
-        Performance::Review(_) | Performance::New => None,
     };
-
-    let Some(minutes) = minutes else {
-        return;
-    };
-
-    let reviewed = match perf {
-        Performance::LearningA(r) => r,
-        Performance::LearningB(r) => r,
-        Performance::Review(_) | Performance::New => unreachable!(),
-    };
-
-    reviewed.interval_raw = minutes as f64 / MINUTES_PER_DAY;
-    reviewed.interval_days = 0;
-    reviewed.due_date = reviewed.last_reviewed_at + Duration::minutes(minutes);
-}
-
-fn apply_graduating_interval(perf: &mut Performance) {
-    if let Performance::Review(reviewed) = perf {
-        reviewed.interval_raw = GRADUATING_INTERVAL_DAYS as f64;
-        reviewed.interval_days = GRADUATING_INTERVAL_DAYS as usize;
-        reviewed.due_date = reviewed.last_reviewed_at + Duration::days(GRADUATING_INTERVAL_DAYS);
+    FsrsStats {
+        stability,
+        difficulty,
+        scheduling_stats,
     }
 }
 
@@ -253,8 +253,8 @@ fn apply_graduating_interval(perf: &mut Performance) {
 mod tests {
 
     use super::{
-        LEARNING_A_INTERVAL_MINS, LEARNING_B_INTERVAL_MINS, MAX_INTERVAL, MIN_INTERVAL,
-        Performance, ReviewStatus, ReviewedPerformance, fsrs_schedule, update_performance,
+        FsrsStats, LEARNING_A_INTERVAL_MINS, LEARNING_B_INTERVAL_MINS, MAX_INTERVAL, MIN_INTERVAL,
+        Performance, ReviewStatus, SchedulingStats, fsrs_schedule, update_performance,
     };
 
     use chrono::Duration;
@@ -267,15 +267,14 @@ mod tests {
     fn test_update_new_card() {
         let reviewed_at = chrono::Utc::now();
         let result = fsrs_schedule(Performance::New, ReviewStatus::Pass, reviewed_at);
-        let ReviewedPerformance {
-            last_reviewed_at,
-            stability,
-            difficulty,
-            interval_raw,
-            interval_days,
-            due_date: _,
-            review_count,
-        } = result;
+
+        let last_reviewed_at = result.scheduling_stats.last_reviewed_at;
+        let review_count = result.scheduling_stats.review_count;
+        let interval_raw = result.scheduling_stats.interval_raw;
+        let interval_days = result.scheduling_stats.interval_days;
+        let stability = result.stability;
+        let difficulty = result.difficulty;
+
         assert_eq!(last_reviewed_at, reviewed_at);
         assert!(approx_eq(stability, 3.17));
         assert!(approx_eq(difficulty, 5.28));
@@ -289,14 +288,17 @@ mod tests {
         let now = chrono::Utc::now();
         let duration = Duration::days(3);
         let last_reviewed_at = now - duration;
-        let initial_perf = ReviewedPerformance {
+        let scheduling_stats = SchedulingStats {
             last_reviewed_at,
-            stability: 3.17,
-            difficulty: 5.28,
+            review_count: 1,
             interval_raw: 3.17,
             interval_days: 3,
             due_date: now + duration,
-            review_count: 1,
+        };
+        let initial_perf = FsrsStats {
+            stability: 3.17,
+            difficulty: 5.28,
+            scheduling_stats,
         };
         let reviewed_at = now;
         let result = fsrs_schedule(
@@ -304,15 +306,12 @@ mod tests {
             ReviewStatus::Pass,
             reviewed_at,
         );
-        let ReviewedPerformance {
-            last_reviewed_at,
-            stability,
-            difficulty,
-            interval_raw,
-            interval_days,
-            due_date: _,
-            review_count,
-        } = result;
+        let last_reviewed_at = result.scheduling_stats.last_reviewed_at;
+        let review_count = result.scheduling_stats.review_count;
+        let interval_raw = result.scheduling_stats.interval_raw;
+        let interval_days = result.scheduling_stats.interval_days;
+        let stability = result.stability;
+        let difficulty = result.difficulty;
         assert_eq!(last_reviewed_at, reviewed_at);
         assert!(approx_eq(stability, 10.739));
         assert!(approx_eq(difficulty, 5.280));
@@ -326,7 +325,7 @@ mod tests {
         let mut reviewed_at = chrono::Utc::now();
         let mut performance = fsrs_schedule(Performance::New, ReviewStatus::Pass, reviewed_at);
         for _ in 0..100 {
-            let interval_raw = performance.interval_raw;
+            let interval_raw = performance.scheduling_stats.interval_raw;
             let interval_rounded: f64 = interval_raw.round();
             let interval_clamped: f64 = interval_rounded.clamp(MIN_INTERVAL, MAX_INTERVAL);
             let interval_duration: Duration = Duration::days(interval_clamped as i64);
@@ -338,13 +337,13 @@ mod tests {
                 reviewed_at,
             );
         }
-        assert_eq!(performance.review_count, 101);
-        assert_eq!(performance.interval_days, 256);
+        assert_eq!(performance.scheduling_stats.review_count, 101);
+        assert_eq!(performance.scheduling_stats.interval_days, 256);
         assert!(approx_eq(performance.difficulty, 5.28));
         assert!(approx_eq(performance.stability, 26315.03905930558));
 
         for _ in 0..100 {
-            let interval_raw = performance.interval_raw;
+            let interval_raw = performance.scheduling_stats.interval_raw;
             let interval_rounded: f64 = interval_raw.round();
             let interval_clamped: f64 = interval_rounded.clamp(MIN_INTERVAL, MAX_INTERVAL);
             let interval_duration: Duration = Duration::days(interval_clamped as i64);
@@ -356,8 +355,8 @@ mod tests {
                 reviewed_at,
             );
         }
-        assert_eq!(performance.review_count, 201);
-        assert_eq!(performance.interval_days, 1);
+        assert_eq!(performance.scheduling_stats.review_count, 201);
+        assert_eq!(performance.scheduling_stats.interval_days, 1);
         assert!(approx_eq(performance.difficulty, 9.9337));
         assert!(approx_eq(performance.stability, 0.148424));
     }

@@ -12,8 +12,8 @@ use anyhow::anyhow;
 
 use crate::card::Card;
 use crate::check_version::VersionUpdateStats;
-use crate::fsrs::update_performance;
-use crate::fsrs::{Performance, ReviewStage, ReviewStatus, ReviewedPerformance};
+use crate::fsrs::{FsrsStats, Performance, ReviewStage, ReviewStatus};
+use crate::fsrs::{SchedulingStats, update_performance};
 use crate::stats::CardStats;
 
 pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
@@ -166,6 +166,82 @@ impl DB {
         Ok(count > 0)
     }
 
+    async fn update_learning(
+        &self,
+        card: &Card,
+        stats: SchedulingStats,
+        review_stage: ReviewStage,
+    ) -> Result<f64> {
+        let interval_days = stats.interval_days as i64;
+        let review_count = stats.review_count as i64;
+
+        sqlx::query!(
+            r#"
+        UPDATE cards
+        SET
+            last_reviewed_at = ?,
+            interval_raw = ?,
+            interval_days = ?,
+            due_date = ?,
+            review_count = ?,
+            review_stage = ?
+        WHERE card_hash = ?
+        "#,
+            stats.last_reviewed_at,
+            stats.interval_raw,
+            interval_days,
+            stats.due_date,
+            review_count,
+            review_stage,
+            card.card_hash,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(stats.interval_raw)
+    }
+
+    async fn update_review(
+        &self,
+        card: &Card,
+        fsrs: FsrsStats,
+        review_stage: ReviewStage,
+    ) -> Result<f64> {
+        let stats = fsrs.scheduling_stats;
+
+        let interval_days = stats.interval_days as i64;
+        let review_count = stats.review_count as i64;
+
+        sqlx::query!(
+            r#"
+        UPDATE cards
+        SET
+            last_reviewed_at = ?,
+            stability = ?,
+            difficulty = ?,
+            interval_raw = ?,
+            interval_days = ?,
+            due_date = ?,
+            review_count = ?,
+            review_stage = ?
+        WHERE card_hash = ?
+        "#,
+            stats.last_reviewed_at,
+            fsrs.stability,
+            fsrs.difficulty,
+            stats.interval_raw,
+            interval_days,
+            stats.due_date,
+            review_count,
+            review_stage,
+            card.card_hash,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(stats.interval_raw)
+    }
+
     pub async fn update_card_performance(
         &self,
         card: &Card,
@@ -175,103 +251,104 @@ impl DB {
         let now = chrono::Utc::now();
         let new_performance = update_performance(current_performance, review_status, now);
 
-        let reviewed = match &new_performance {
-            Performance::LearningA(r) | Performance::LearningB(r) | Performance::Review(r) => r,
-            Performance::New => {
-                return Err(anyhow!(
-                    "update_performance returned Performance::New unexpectedly"
-                ));
-            }
-        };
-
-        let interval_days = reviewed.interval_days as i64;
-        let review_count = reviewed.review_count as i64;
         let review_stage = new_performance.stage();
 
-        sqlx::query!(
-            r#"
-            UPDATE cards
-            SET
-                last_reviewed_at = ?,
-                stability = ?,
-                difficulty = ?,
-                interval_raw = ?,
-                interval_days = ?,
-                due_date = ?,
-                review_count = ?,
-                review_stage = ?
-            WHERE card_hash = ?
-            "#,
-            reviewed.last_reviewed_at,
-            reviewed.stability,
-            reviewed.difficulty,
-            reviewed.interval_raw,
-            interval_days,
-            reviewed.due_date,
-            review_count,
-            review_stage,
-            card.card_hash,
-        )
-        .execute(&self.pool)
-        .await?;
+        match new_performance {
+            Performance::LearningA(stats) | Performance::LearningB(stats) => {
+                self.update_learning(card, stats, review_stage).await
+            }
 
-        Ok(reviewed.interval_raw)
+            Performance::Review(fsrs) => self.update_review(card, fsrs, review_stage).await,
+
+            Performance::New => Err(anyhow!(
+                "update_performance returned Performance::New unexpectedly"
+            )),
+        }
     }
-
     pub async fn get_card_performance(&self, card: &Card) -> Result<Performance> {
         let row = sqlx::query!(
             r#"
-            SELECT
-                last_reviewed_at as "last_reviewed_at?: chrono::DateTime<chrono::Utc>",
-                stability as "stability?: f64",
-                difficulty as "difficulty?: f64",
-                interval_raw as "interval_raw?: f64",
-                interval_days as "interval_days?: i64",
-                due_date as "due_date?: chrono::DateTime<chrono::Utc>",
-                review_count as "review_count!: i64",
-                review_stage as "review_stage!: ReviewStage"
-            FROM cards
-            WHERE card_hash = ?
-            "#,
+        SELECT
+            last_reviewed_at as "last_reviewed_at?: chrono::DateTime<chrono::Utc>",
+            stability as "stability?: f64",
+            difficulty as "difficulty?: f64",
+            interval_raw as "interval_raw?: f64",
+            interval_days as "interval_days?: i64",
+            due_date as "due_date?: chrono::DateTime<chrono::Utc>",
+            review_count as "review_count!: i64",
+            review_stage as "review_stage!: ReviewStage"
+        FROM cards
+        WHERE card_hash = ?
+        "#,
             card.card_hash
         )
         .fetch_one(&self.pool)
         .await?;
 
-        let review_count: i64 = row.review_count;
-        if review_count == 0 {
-            return Ok(Performance::default());
-        }
-        let reviewed = ReviewedPerformance {
-            last_reviewed_at: row
-                .last_reviewed_at
-                .ok_or_else(|| anyhow!("missing last_reviewed_at for card {}", card.card_hash))?,
-            stability: row
-                .stability
-                .ok_or_else(|| anyhow!("missing stability for card {}", card.card_hash))?,
-            difficulty: row
-                .difficulty
-                .ok_or_else(|| anyhow!("missing difficulty for card {}", card.card_hash))?,
-            interval_raw: row
-                .interval_raw
-                .ok_or_else(|| anyhow!("missing interval_raw for card {}", card.card_hash))?,
-            interval_days: row
-                .interval_days
-                .ok_or_else(|| anyhow!("missing interval_days for card {}", card.card_hash))?
-                as usize,
-            due_date: row
-                .due_date
-                .ok_or_else(|| anyhow!("missing due_date for card {}", card.card_hash))?,
-            review_count: review_count as usize,
-        };
-        match row.review_stage {
-            ReviewStage::LearningA => Ok(Performance::LearningA(reviewed)),
-            ReviewStage::LearningB => Ok(Performance::LearningB(reviewed)),
-            ReviewStage::Review => Ok(Performance::Review(reviewed)),
-            ReviewStage::New => Ok(Performance::New),
-        }
-    }
+        let review_count = row.review_count as usize;
 
+        let performance = match row.review_stage {
+            ReviewStage::New => Performance::New,
+
+            ReviewStage::LearningA | ReviewStage::LearningB => {
+                let scheduling_stats = SchedulingStats {
+                    last_reviewed_at: row.last_reviewed_at.ok_or_else(|| {
+                        anyhow!("missing last_reviewed_at for card {}", card.card_hash)
+                    })?,
+                    interval_raw: row.interval_raw.ok_or_else(|| {
+                        anyhow!("missing interval_raw for card {}", card.card_hash)
+                    })?,
+                    interval_days: row.interval_days.ok_or_else(|| {
+                        anyhow!("missing interval_days for card {}", card.card_hash)
+                    })? as usize,
+                    due_date: row
+                        .due_date
+                        .ok_or_else(|| anyhow!("missing due_date for card {}", card.card_hash))?,
+                    review_count,
+                };
+
+                match row.review_stage {
+                    ReviewStage::LearningA => Performance::LearningA(scheduling_stats),
+                    ReviewStage::LearningB => Performance::LearningB(scheduling_stats),
+                    _ => unreachable!(),
+                }
+            }
+
+            ReviewStage::Review => {
+                let scheduling_stats = SchedulingStats {
+                    last_reviewed_at: row.last_reviewed_at.ok_or_else(|| {
+                        anyhow!("missing last_reviewed_at for card {}", card.card_hash)
+                    })?,
+                    interval_raw: row.interval_raw.ok_or_else(|| {
+                        anyhow!("missing interval_raw for card {}", card.card_hash)
+                    })?,
+                    interval_days: row.interval_days.ok_or_else(|| {
+                        anyhow!("missing interval_days for card {}", card.card_hash)
+                    })? as usize,
+                    due_date: row
+                        .due_date
+                        .ok_or_else(|| anyhow!("missing due_date for card {}", card.card_hash))?,
+                    review_count,
+                };
+
+                let stability = row
+                    .stability
+                    .ok_or_else(|| anyhow!("missing stability for card {}", card.card_hash))?;
+
+                let difficulty = row
+                    .difficulty
+                    .ok_or_else(|| anyhow!("missing difficulty for card {}", card.card_hash))?;
+
+                Performance::Review(FsrsStats {
+                    stability,
+                    difficulty,
+                    scheduling_stats,
+                })
+            }
+        };
+
+        Ok(performance)
+    }
     pub async fn due_today(
         &self,
         card_hashes: HashMap<String, Card>,
