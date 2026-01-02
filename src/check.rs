@@ -130,6 +130,16 @@ fn collection_panel(stats: &CardStats) -> Paragraph<'static> {
                 *stats.card_lifecycles.get(&CardLifeCycle::New).unwrap_or(&0)
             )),
             Theme::bullet(),
+            Theme::muted_span("Learning"),
+            Theme::bullet(),
+            Theme::label_span(format!(
+                "{}",
+                *stats
+                    .card_lifecycles
+                    .get(&CardLifeCycle::Learning)
+                    .unwrap_or(&0)
+            )),
+            Theme::bullet(),
             Theme::muted_span("Young"),
             Theme::bullet(),
             Theme::label_span(format!(

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::card::Card;
 use crate::crud::CardStatsRow;
-use crate::fsrs::calculate_recall;
+use crate::fsrs::{ReviewStage, calculate_recall};
 
 #[derive(Debug, Default)]
 pub struct CardStats {
@@ -53,6 +53,7 @@ impl<const N: usize> Histogram<N> {
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub enum CardLifeCycle {
     New,
+    Learning,
     Young,
     Mature,
 }
@@ -61,7 +62,7 @@ const MATURE_INTERVAL: f64 = 21.0;
 impl CardStats {
     // row is a Record
     pub fn update(&mut self, card: &Card, row: &CardStatsRow) {
-        let review_count = row.review_count;
+        let review_stage = row.review_stage;
         let due_date = row.due_date;
         let interval = row.interval_raw.unwrap_or_default();
         let difficulty = row.difficulty.unwrap_or_default();
@@ -73,8 +74,10 @@ impl CardStats {
         let month_horizon = now + chrono::Duration::days(30);
         *self.file_paths.entry(card.file_path.clone()).or_insert(0) += 1;
 
-        let lifecycle = if review_count == 0 {
+        let lifecycle = if review_stage == ReviewStage::New {
             CardLifeCycle::New
+        } else if review_stage == ReviewStage::LearningA || review_stage == ReviewStage::LearningB {
+            CardLifeCycle::Learning
         } else if interval > MATURE_INTERVAL {
             CardLifeCycle::Mature
         } else {
