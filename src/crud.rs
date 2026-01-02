@@ -11,10 +11,10 @@ use anyhow::anyhow;
 
 use crate::card::Card;
 use crate::check_version::VersionUpdateStats;
-use crate::fsrs::Performance;
 use crate::fsrs::ReviewStatus;
 use crate::fsrs::ReviewedPerformance;
 use crate::fsrs::update_performance;
+use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, Performance};
 use crate::stats::CardStats;
 
 #[derive(Clone)]
@@ -169,9 +169,14 @@ impl DB {
         &self,
         card: &Card,
         review_status: ReviewStatus,
+        optional_now: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<f64> {
         let current_performance = self.get_card_performance(card).await?;
-        let now = chrono::Utc::now();
+        let now = match optional_now {
+            Some(now) => now,
+            None => chrono::Utc::now(),
+        };
+
         let new_performance = update_performance(current_performance, review_status, now);
 
         let interval_days = new_performance.interval_days as i64;
@@ -260,7 +265,7 @@ impl DB {
         card_limit: Option<usize>,
         new_card_limit: Option<usize>,
     ) -> Result<Vec<Card>> {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = (chrono::Utc::now() + LEARN_AHEAD_THRESHOLD_MINS).to_rfc3339();
 
         // most overdue cards first
         // then cards due today
@@ -348,13 +353,6 @@ impl DB {
     }
 }
 
-#[cfg(test)]
-impl DB {
-    pub async fn new_in_memory() -> Result<Self> {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")?;
-        Self::connect(options).await
-    }
-}
 pub struct CardStatsRow {
     pub card_hash: String,
     pub review_count: i64,
@@ -363,4 +361,107 @@ pub struct CardStatsRow {
     pub difficulty: Option<f64>,
     pub stability: Option<f64>,
     pub last_reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[cfg(test)]
+impl DB {
+    pub async fn new_in_memory() -> Result<Self> {
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?;
+        Self::connect(options).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    use crate::fsrs::{Performance, ReviewStatus};
+    use crate::stats::CardLifeCycle;
+    use crate::utils::content_to_card;
+
+    use super::DB;
+
+    #[tokio::test]
+    async fn follow_card_progress() {
+        let content = "C: ping? [pong]";
+        let card_path = PathBuf::from("test.md");
+
+        // add card
+        let db = DB::new_in_memory().await.unwrap();
+        let card = content_to_card(&card_path, content, 1, 1).unwrap();
+        db.add_card(&card.clone()).await.unwrap();
+
+        // should exist
+        assert!(db.card_exists(&card).await.unwrap());
+
+        // should be in stats
+        let card_hashes = HashMap::from([(card.card_hash.clone(), card.clone())]);
+        let stats = db.collection_stats(&card_hashes).await.unwrap();
+        assert_eq!(stats.num_cards, 1);
+        assert_eq!(stats.due_cards, 1);
+        assert_eq!(stats.card_lifecycles.get(&CardLifeCycle::New).unwrap(), &1);
+
+        // should be due today
+        let due_today_cards = db.due_today(card_hashes, None, None).await.unwrap();
+        assert_eq!(due_today_cards.len(), 1);
+
+        // check short-term scheduling
+        for _ in 0..3 {
+            db.update_card_performance(&card, ReviewStatus::Pass, None)
+                .await
+                .unwrap();
+        }
+
+        match db.get_card_performance(&card).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 3);
+                assert_eq!(reviewed.interval_raw, 1.0);
+            }
+            _ => panic!(),
+        }
+
+        // wait the interval and then pass again
+        let mut future_time = chrono::Utc::now() + chrono::Duration::days(1);
+        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time))
+            .await
+            .unwrap();
+
+        match db.get_card_performance(&card).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 4);
+                assert_eq!(reviewed.interval_raw, 6.0);
+            }
+            _ => panic!(),
+        }
+
+        // now collapse it with a failure
+        future_time += chrono::Duration::days(6);
+        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+            .await
+            .unwrap();
+
+        match db.get_card_performance(&card).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 5);
+                assert_eq!(reviewed.interval_raw, 2.0);
+            }
+            _ => panic!(),
+        }
+
+        // another failure
+        future_time += chrono::Duration::days(2);
+        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+            .await
+            .unwrap();
+
+        match db.get_card_performance(&card).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 6);
+                assert_eq!(reviewed.interval_raw, 1.0);
+            }
+            _ => panic!(),
+        }
+    }
 }

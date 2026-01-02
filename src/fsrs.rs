@@ -10,7 +10,22 @@ const C: f64 = -0.5;
 const TARGET_RECALL: f64 = 0.9;
 const MIN_INTERVAL: f64 = 1.0;
 const MAX_INTERVAL: f64 = 256.0;
+pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
 
+fn early_interval_cap(review_count: usize, review_status: ReviewStatus) -> Option<Duration> {
+    match review_count {
+        0 => Some(Duration::minutes(1)),
+        1 => match review_status {
+            ReviewStatus::Pass => Some(Duration::minutes(10)),
+            ReviewStatus::Fail => Some(Duration::minutes(1)),
+        },
+        2 => match review_status {
+            ReviewStatus::Pass => Some(Duration::days(1)),
+            ReviewStatus::Fail => Some(Duration::minutes(10)),
+        },
+        _ => None,
+    }
+}
 pub fn calculate_recall(interval: f64, stability: f64) -> f64 {
     (1.0 + F * (interval / stability)).powf(C)
 }
@@ -145,8 +160,16 @@ pub fn update_performance(
     let interval_raw: f64 = calulate_interval(TARGET_RECALL, stability);
     let interval_rounded: f64 = interval_raw.round();
     let interval_clamped: f64 = interval_rounded.clamp(MIN_INTERVAL, MAX_INTERVAL);
-    let interval_days: usize = interval_clamped as usize;
-    let interval_duration: Duration = Duration::days(interval_clamped as i64);
+    let fsrs_duration = Duration::days(interval_clamped as i64);
+
+    let interval_duration = early_interval_cap(review_count, review_status)
+        .map(|cap| fsrs_duration.min(cap))
+        .unwrap_or(fsrs_duration);
+    let interval_effective_days = interval_duration.num_seconds() as f64 / 86_400.0;
+
+    let interval_raw = interval_effective_days;
+
+    let interval_days: usize = interval_duration.num_days().max(1) as usize;
     let due_date: chrono::DateTime<chrono::Utc> = reviewed_at + interval_duration;
     ReviewedPerformance {
         last_reviewed_at: reviewed_at,
@@ -189,8 +212,8 @@ mod tests {
         assert_eq!(last_reviewed_at, reviewed_at);
         assert!(approx_eq(stability, 3.17));
         assert!(approx_eq(difficulty, 5.28));
-        assert!(approx_eq(interval_raw, 3.17));
-        assert_eq!(interval_days, 3);
+        assert!(approx_eq(interval_raw, 0.0006944444444444445));
+        assert_eq!(interval_days, 1);
         assert_eq!(review_count, 1);
     }
 
@@ -226,8 +249,8 @@ mod tests {
         assert_eq!(last_reviewed_at, reviewed_at);
         assert!(approx_eq(stability, 10.739));
         assert!(approx_eq(difficulty, 5.280));
-        assert!(approx_eq(interval_raw, 10.739));
-        assert_eq!(interval_days, 11);
+        assert!(approx_eq(interval_raw, 0.006944444444444444));
+        assert_eq!(interval_days, 1);
         assert_eq!(review_count, 2);
     }
 
@@ -251,7 +274,7 @@ mod tests {
         assert_eq!(performance.review_count, 101);
         assert_eq!(performance.interval_days, 256);
         assert!(approx_eq(performance.difficulty, 5.28));
-        assert!(approx_eq(performance.stability, 26315.03905930558));
+        assert!(approx_eq(performance.stability, 25827.806046079717));
 
         for _ in 0..100 {
             let interval_raw = performance.interval_raw;
