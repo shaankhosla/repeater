@@ -10,6 +10,7 @@ const C: f64 = -0.5;
 const TARGET_RECALL: f64 = 0.9;
 const MIN_INTERVAL: f64 = 1.0;
 const MAX_INTERVAL: f64 = 256.0;
+pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
 
 fn early_interval_cap(review_count: usize, review_status: ReviewStatus) -> Option<Duration> {
     match review_count {

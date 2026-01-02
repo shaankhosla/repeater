@@ -11,10 +11,10 @@ use anyhow::anyhow;
 
 use crate::card::Card;
 use crate::check_version::VersionUpdateStats;
-use crate::fsrs::Performance;
 use crate::fsrs::ReviewStatus;
 use crate::fsrs::ReviewedPerformance;
 use crate::fsrs::update_performance;
+use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, Performance};
 use crate::stats::CardStats;
 
 #[derive(Clone)]
@@ -176,6 +176,7 @@ impl DB {
             Some(now) => now,
             None => chrono::Utc::now(),
         };
+
         let new_performance = update_performance(current_performance, review_status, now);
 
         let interval_days = new_performance.interval_days as i64;
@@ -264,7 +265,7 @@ impl DB {
         card_limit: Option<usize>,
         new_card_limit: Option<usize>,
     ) -> Result<Vec<Card>> {
-        let now = chrono::Utc::now().to_rfc3339();
+        let now = (chrono::Utc::now() + LEARN_AHEAD_THRESHOLD_MINS).to_rfc3339();
 
         // most overdue cards first
         // then cards due today

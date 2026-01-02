@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use crate::card::{Card, CardContent};
 use crate::crud::DB;
-use crate::fsrs::ReviewStatus;
+use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::markdown::render_markdown;
 use crate::theme::Theme;
 use crate::utils::register_all_cards;
@@ -115,7 +115,10 @@ impl<'a> DrillState<'a> {
             .db
             .update_card_performance(&current_card, action, None)
             .await?;
-        if action == ReviewStatus::Fail || show_again_duration < 20.0 / (60.0 * 24.0) {
+        if action == ReviewStatus::Fail
+            || show_again_duration
+                < (LEARN_AHEAD_THRESHOLD_MINS.num_minutes() as f64 / MINUTES_PER_DAY)
+        {
             self.redo_cards.push(current_card.clone());
         }
 
