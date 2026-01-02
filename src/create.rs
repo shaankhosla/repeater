@@ -31,6 +31,8 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
+const FLASH_SECS: f64 = 1.5;
+
 pub async fn run(db: &DB, card_path: PathBuf) -> Result<()> {
     if !is_markdown(&card_path) {
         return Err(anyhow!(
@@ -156,7 +158,7 @@ async fn capture_cards(db: &DB, card_path: &Path) -> io::Result<()> {
                     Theme::label_span(format!(" {}", card_created_count)),
                 ]));
                 if let Some(time) = card_last_save_attempt
-                    && time.elapsed().as_secs_f32() < 1.0
+                    && time.elapsed().as_secs_f64() < FLASH_SECS
                     && status.is_some()
                 {
                     let message = status.clone().unwrap();
