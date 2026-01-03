@@ -336,7 +336,6 @@ pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<
     walker_handle.await??;
 
     resolve_missing_clozes(&mut hash_cards).await?;
-
     Ok(hash_cards)
 }
 
@@ -374,23 +373,26 @@ async fn resolve_missing_clozes(hash_cards: &mut HashMap<String, Card>) -> Resul
             let new_cloze_text = request_cloze(&client, &text).await.with_context(|| {
                 format!("Failed to synthesize cloze text for card:\n\n{}", text)
             })?;
-            let cloze_idxs = find_cloze_ranges(&new_cloze_text);
-            Ok::<_, anyhow::Error>((hash, cloze_idxs))
+            Ok::<_, anyhow::Error>((hash, new_cloze_text))
         }
     }))
     .buffer_unordered(MAX_CONCURRENT_LLM_REQUESTS);
 
     while let Some(llm_output) = tasks.next().await {
-        let (hash, cloze_idx) = llm_output?;
+        let (hash, new_cloze_text) = llm_output?;
         if let Some(card) = hash_cards.get_mut(&hash)
-            && let CardContent::Cloze { cloze_range, .. } = &mut card.content
+            && let CardContent::Cloze {
+                text, cloze_range, ..
+            } = &mut card.content
         {
-            let new_cloze_range: ClozeRange = cloze_idx
+            let cloze_idxs = find_cloze_ranges(&new_cloze_text);
+            let new_cloze_range: ClozeRange = cloze_idxs
                 .first()
                 .map(|(start, end)| ClozeRange::new(*start, *end))
                 .transpose()?
                 .ok_or_else(|| anyhow::anyhow!("No cloze range found"))?;
             *cloze_range = Some(new_cloze_range);
+            *text = new_cloze_text;
         }
     }
 

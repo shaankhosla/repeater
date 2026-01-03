@@ -35,3 +35,5 @@ A: A running instance of an image.
 
 ---
 
+C: This should be generated with ai
+C: make this into a cloze too
