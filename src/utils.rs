@@ -25,7 +25,7 @@ pub fn is_markdown(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
+pub fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
     let mut start = None;
 
