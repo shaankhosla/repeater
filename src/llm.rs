@@ -11,56 +11,10 @@ const SERVICE: &str = "com.repeat.cli";
 const USERNAME: &str = "openai";
 
 use keyring::Entry;
-use tokio::runtime::Builder;
 
 const CLOZE_MODEL: &str = "gpt-4o-mini";
 
-pub fn generate_cloze(text: &str) -> Vec<String> {
-    if text.trim().is_empty() {
-        return Vec::new();
-    }
-
-    let user_prompt = get_cloze_prompt(text);
-    let text = text.to_string();
-    let runtime = match Builder::new_current_thread().enable_all().build() {
-        Ok(rt) => rt,
-        Err(err) => {
-            eprintln!(
-                "repeat: unable to start runtime for LLM cloze generation: {}",
-                err
-            );
-            return Vec::new();
-        }
-    };
-
-    runtime.block_on(async move {
-        match llm_status(&user_prompt).await {
-            Ok(client) => match request_cloze(&client, &text).await {
-                Ok(suggestions) => suggestions,
-                Err(err) => {
-                    eprintln!("repeat: failed to generate cloze: {}", err);
-                    Vec::new()
-                }
-            },
-            Err(err) => {
-                eprintln!("repeat: LLM unavailable: {}", err);
-                Vec::new()
-            }
-        }
-    })
-}
-
-fn get_cloze_prompt(text: &str) -> String {
-    let mut prompt = String::new();
-    prompt.push_str(
-        "There is a Cloze text in your collection that doesn't have a valid cloze []:\n\n",
-    );
-    prompt.push_str(text);
-    prompt.push_str("\nIf you'd like to use an LLM to turn this into a Cloze, we can send your text to an LLM to generate a Cloze.\n\n");
-    prompt
-}
-
-async fn llm_status(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
+pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let llm_key = load_api_key();
     let key = match llm_key {
         Ok(api_key) => api_key,
@@ -81,9 +35,7 @@ async fn llm_status(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
 }
 
 async fn initialize_client(api_key: &str) -> Result<Client<OpenAIConfig>> {
-    let config = OpenAIConfig::new()
-        .with_api_key(api_key)
-        .with_org_id("the-continental");
+    let config = OpenAIConfig::new().with_api_key(api_key);
 
     let client = Client::with_config(config);
     Ok(client)
@@ -98,19 +50,20 @@ async fn healthcheck_client(client: &Client<OpenAIConfig>) -> Result<()> {
     Ok(())
 }
 
-async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<Vec<String>> {
+pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<String> {
     let request = CreateChatCompletionRequestArgs::default()
         .model(CLOZE_MODEL)
         .max_tokens(200_u16)
         .temperature(0.2)
         .messages([
             ChatCompletionRequestSystemMessageArgs::default()
-                .content("You rewrite study notes into Cloze deletions. Wrap the hidden facts in square brackets []. Return up to three options, one per line, and do not add commentary.")
+                .content("You convert flashcards into Cloze deletions. A Cloze deletion is denoted by square brackets: [hidden text]. Only add in one Cloze deletion. Your goal is to highlight the part of the flashcard you believe is most critical for a studying user to be able to recall. It can be a word or a small phrase.")
                 .build()?
                 .into(),
             ChatCompletionRequestUserMessageArgs::default()
                 .content(format!(
-                    "Turn the following text into a Cloze card by inserting [] around the hidden portion:\n{}",
+                    "Turn the following text into a Cloze card by inserting [] around the hidden portion. Return the exact same text as below, but just with the addition of brackets around the Cloze deletion. For example, if you were shown the follwing text:\n\nC: Speech is produced in Broca's area.\n\nThis might be a good response to produce:\n\nC: Speech is produced in [Broca's] area.\n\nThis is the text you should generate the Cloze deletion for:
+:\n{}",
                     text
                 ))
                 .build()?
@@ -122,23 +75,15 @@ async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<Vec<
         .chat()
         .create(request)
         .await
-        .context("Failed to request Cloze generation")?;
+        .context("LLM API failed to request Cloze generation")?;
 
-    let mut suggestions = Vec::new();
-    for choice in response.choices {
-        if let Some(content) = choice.message.content {
-            for line in content.lines() {
-                let candidate = line
-                    .trim()
-                    .trim_start_matches(|c: char| c == '-' || c == '*')
-                    .trim();
-                if !candidate.is_empty() {
-                    suggestions.push(candidate.to_string());
-                }
-            }
-        }
-    }
-    Ok(suggestions)
+    let output = response
+        .choices
+        .first()
+        .and_then(|c| c.message.content.clone())
+        .ok_or_else(|| anyhow!("No content returned from model"))?;
+
+    Ok(output)
 }
 
 fn prompt_user_for_key(prompt: &str) -> Result<String> {

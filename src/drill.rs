@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::card::{Card, CardContent};
+use crate::card::{Card, CardContent, ClozeRange};
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::markdown::render_markdown;
@@ -302,43 +302,34 @@ fn format_card_text(card: &Card, show_answer: bool) -> String {
             }
             text
         }
-        CardContent::Cloze { text, start, end } => {
-            let body = if show_answer {
-                text.clone()
-            } else {
-                mask_cloze_text(text, *start, *end)
+        CardContent::Cloze { text, cloze_range } => {
+            let body = match (cloze_range, show_answer) {
+                (Some(range), false) => mask_cloze_text(text, range),
+                _ => text.clone(),
             };
             format!("Cloze:\n{}", body)
         }
     }
 }
 
-fn mask_cloze_text(text: &str, start: usize, end: usize) -> String {
-    if start >= text.len() || end >= text.len() || start >= end {
+fn mask_cloze_text(text: &str, range: &ClozeRange) -> String {
+    let start = range.start;
+    let end = range.end;
+    if start >= end || end > text.len() {
         return text.to_string();
     }
 
-    let open_len = text[start..]
-        .chars()
-        .next()
-        .map(|c| c.len_utf8())
-        .unwrap_or(0);
-    let close_len = text[end..]
-        .chars()
-        .next()
-        .map(|c| c.len_utf8())
-        .unwrap_or(0);
-    let inner_start = start.saturating_add(open_len);
-    let after = end.saturating_add(close_len);
+    let hidden_section = &text[start..end];
+    let core = hidden_section.trim_start_matches('[').trim_end_matches(']');
+    let placeholder = "_".repeat(core.chars().count().max(3));
 
-    if inner_start > text.len() || after > text.len() || inner_start > end {
-        return text.to_string();
-    }
-
-    let hidden_section = &text[inner_start..end];
-    let placeholder = "_".repeat(hidden_section.chars().count().max(3));
-
-    format!("{}[{}]{}", &text[..start], placeholder, &text[after..])
+    let mut masked = String::with_capacity(text.len() + 2);
+    masked.push_str(&text[..start]);
+    masked.push('[');
+    masked.push_str(&placeholder);
+    masked.push(']');
+    masked.push_str(&text[end..]);
+    masked
 }
 
 #[cfg(test)]
@@ -360,14 +351,13 @@ mod tests {
 
     fn cloze_card(text: &str) -> Card {
         let start = text.find('[').unwrap();
-        let end = text[start..].find(']').unwrap() + start;
+        let end = text[start..].find(']').unwrap() + start + 1;
         Card {
             file_path: PathBuf::from("test.md"),
             file_card_range: (0, 1),
             content: CardContent::Cloze {
                 text: text.into(),
-                start,
-                end,
+                cloze_range: Some(ClozeRange::new(start, end).unwrap()),
             },
             card_hash: "hash".into(),
         }
@@ -388,14 +378,32 @@ mod tests {
     fn mask_cloze_text_handles_unicode_and_bad_ranges() {
         let text = "Capital of 日本 is [東京]";
         let start = text.find('[').unwrap();
-        let end = text[start..].find(']').unwrap() + start;
-        let masked = mask_cloze_text(text, start, end);
+        let end = text[start..].find(']').unwrap() + start + 1;
+        let range = ClozeRange::new(start, end).unwrap();
+        let masked = mask_cloze_text(text, &range);
         let placeholder = extract_placeholder(&masked);
         assert!(placeholder.chars().all(|c| c == '_'));
         assert!(placeholder.chars().count() >= 3);
 
-        let untouched = mask_cloze_text(text, end, start);
+        let bad_range = ClozeRange {
+            start: end,
+            end: start,
+        };
+        let untouched = mask_cloze_text(text, &bad_range);
         assert_eq!(untouched, text);
+    }
+
+    #[test]
+    fn mask_cloze_text_handles_bracketless_ranges() {
+        let text = "The mitochondria is the powerhouse of the cell.";
+        let target = "mitochondria";
+        let start = text.find(target).unwrap();
+        let end = start + target.len();
+        let range = ClozeRange::new(start, end).unwrap();
+        let masked = mask_cloze_text(text, &range);
+        let placeholder = extract_placeholder(&masked);
+        assert_eq!(placeholder.chars().count(), target.len());
+        assert!(placeholder.chars().all(|c| c == '_'));
     }
 
     #[test]

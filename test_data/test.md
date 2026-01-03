@@ -33,6 +33,3 @@ These are now notes and they shouldn't get parsed out anywhere.
 Q: What is a Docker container?
 A: A running instance of an image.
 
----
-
-C: use AI on this one

@@ -5,7 +5,8 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::card::{Card, CardContent, ClozeRange};
-use crate::llm::generate_cloze;
+use crate::llm::{ensure_client, request_cloze};
+use futures::stream::{self, StreamExt};
 use ignore::WalkState;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -13,7 +14,9 @@ use tokio::sync::mpsc;
 
 use crate::crud::DB;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+
+const MAX_CONCURRENT_LLM_REQUESTS: usize = 4;
 
 pub fn is_markdown(path: &Path) -> bool {
     path.extension()
@@ -31,7 +34,7 @@ fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
             '[' if start.is_none() => start = Some(i),
             ']' if start.is_some() => {
                 let s = start.take().unwrap();
-                let e = i;
+                let e = i + ch.len_utf8();
                 ranges.push((s, e));
             }
             _ => {}
@@ -175,10 +178,10 @@ pub fn content_to_card(
         })
     } else if let Some(c) = cloze {
         let cloze_idxs = find_cloze_ranges(&c);
-        let cloze_range: Option<ClozeRange> = match cloze_idxs.len() {
-            0 => None,
-            _ => Some(ClozeRange::new(cloze_idxs[0].0, cloze_idxs[0].1)?),
-        };
+        let cloze_range: Option<ClozeRange> = cloze_idxs
+            .first()
+            .map(|(start, end)| ClozeRange::new(*start, *end))
+            .transpose()?;
 
         let content = CardContent::Cloze {
             text: c,
@@ -332,7 +335,66 @@ pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<
 
     walker_handle.await??;
 
+    resolve_missing_clozes(&mut hash_cards).await?;
+
     Ok(hash_cards)
+}
+
+async fn resolve_missing_clozes(hash_cards: &mut HashMap<String, Card>) -> Result<()> {
+    let mut missing = Vec::new();
+    for (hash, card) in hash_cards.iter() {
+        if let CardContent::Cloze {
+            text,
+            cloze_range: None,
+        } = &card.content
+        {
+            missing.push((hash.clone(), text.clone()));
+        }
+    }
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let mut user_prompt = String::new();
+    let sample_user_cloze = missing.first().map(|(_, text)| text.as_str()).unwrap_or("");
+
+    user_prompt.push_str(
+        "There is a Cloze text in your collection that doesn't have a valid cloze []:\n\n",
+    );
+    user_prompt.push_str(sample_user_cloze);
+    user_prompt.push_str(&format!("\nrepeat can send this text, along with {} other cloze cards without valid clozes, to an LLM to generate a Cloze for you.\n\n", missing.len()));
+
+    let client = ensure_client(&user_prompt).await?;
+    let client = Arc::new(client);
+
+    let mut tasks = stream::iter(missing.into_iter().map(|(hash, text)| {
+        let client = Arc::clone(&client);
+        async move {
+            let new_cloze_text = request_cloze(&client, &text).await.with_context(|| {
+                format!("Failed to synthesize cloze text for card:\n\n{}", text)
+            })?;
+            let cloze_idxs = find_cloze_ranges(&new_cloze_text);
+            Ok::<_, anyhow::Error>((hash, cloze_idxs))
+        }
+    }))
+    .buffer_unordered(MAX_CONCURRENT_LLM_REQUESTS);
+
+    while let Some(llm_output) = tasks.next().await {
+        let (hash, cloze_idx) = llm_output?;
+        if let Some(card) = hash_cards.get_mut(&hash)
+            && let CardContent::Cloze { cloze_range, .. } = &mut card.content
+        {
+            let new_cloze_range: ClozeRange = cloze_idx
+                .first()
+                .map(|(start, end)| ClozeRange::new(*start, *end))
+                .transpose()?
+                .ok_or_else(|| anyhow::anyhow!("No cloze range found"))?;
+            *cloze_range = Some(new_cloze_range);
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -385,10 +447,11 @@ mod tests {
 
         let content = "C: ping? [pong]";
         let card = content_to_card(&card_path, content, 1, 1);
-        if let CardContent::Cloze { text, start, end } = &card.expect("should be basic").content {
+        if let CardContent::Cloze { text, cloze_range } = &card.expect("should be basic").content {
             assert_eq!(text, "ping? [pong]");
-            assert_eq!(*start, 6_usize);
-            assert_eq!(*end, 11_usize);
+            let range = cloze_range.as_ref().expect("range to exist");
+            assert_eq!(range.start, 6_usize);
+            assert_eq!(range.end, 12_usize);
         } else {
             panic!("Expected CardContent::Cloze");
         }
