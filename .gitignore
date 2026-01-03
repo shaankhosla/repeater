@@ -1,8 +1,10 @@
 .DS_Store
 /target
+docs/book/
 *.md
 # keep markdown files in test_data/
 !test_data/*.md
 !README.md
 !CHANGELOG.md
+!docs/**/*.md
 .env
