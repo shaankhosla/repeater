@@ -2,6 +2,7 @@ use crate::{
     card::CardType,
     crud::DB,
     editor::Editor,
+    error::error_display,
     theme::Theme,
     utils::{cards_from_md, content_to_card, is_markdown},
 };
@@ -91,6 +92,18 @@ async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result
 }
 
 async fn capture_cards(db: &DB, card_path: &Path) -> io::Result<()> {
+    let existing_cards = match cards_from_md(card_path) {
+        Ok(cards) => cards,
+        Err(err) => {
+            let lines = crate::error::format_error_lines(
+                &format!("Failed to parse {}", card_path.display()),
+                &err,
+            );
+            let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+            let _ = error_display(refs);
+            return Ok(());
+        }
+    };
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(
@@ -104,11 +117,10 @@ async fn capture_cards(db: &DB, card_path: &Path) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.show_cursor()?;
-
     let editor_result: io::Result<()> = async {
         let mut editor = Editor::new();
         let mut status: Option<String> = None;
-        let existing_cards = cards_from_md(card_path).unwrap_or_default();
+
         let unique_hashes: HashSet<_> = existing_cards.into_iter().map(|c| c.card_hash).collect();
 
         let mut num_cards_in_collection = unique_hashes.len();

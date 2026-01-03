@@ -424,4 +424,99 @@ mod tests {
             .unwrap();
         assert_eq!(cards.len(), 10);
     }
+
+    #[test]
+    fn cards_from_md_returns_error_for_nonexistent_file() {
+        let path = PathBuf::from("nonexistent_file.md");
+        let result = cards_from_md(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_to_card_returns_error_for_invalid_cloze() {
+        let card_path = PathBuf::from("test.md");
+
+        // Cloze without brackets
+        let content = "C: this has no cloze markers";
+        let result = content_to_card(&card_path, content, 0, 1);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("can't find cloze text")
+        );
+
+        // Cloze with empty brackets
+        let content = "C: this has empty []";
+        let result = content_to_card(&card_path, content, 0, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_to_card_returns_error_for_incomplete_basic_card() {
+        let card_path = PathBuf::from("test.md");
+
+        // Question without answer
+        let content = "Q: What is this?\n";
+        let result = content_to_card(&card_path, content, 0, 1);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unable to parse anything")
+        );
+
+        // Answer without question
+        let content = "A: This is an answer\n";
+        let result = content_to_card(&card_path, content, 0, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_to_card_returns_error_for_empty_content() {
+        let card_path = PathBuf::from("test.md");
+        let result = content_to_card(&card_path, "", 0, 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_to_card_returns_error_for_whitespace_only() {
+        let card_path = PathBuf::from("test.md");
+        let content = "   \n  \n  ";
+        let result = content_to_card(&card_path, content, 0, 1);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn register_all_cards_returns_error_for_invalid_card_file() {
+        use std::fs;
+        use std::io::Write;
+
+        let db = DB::new_in_memory()
+            .await
+            .expect("Failed to connect to or initialize database");
+
+        // Create a temporary directory with a malformed markdown file
+        let temp_dir = std::env::temp_dir().join("repeat_test_malformed");
+        fs::create_dir_all(&temp_dir).unwrap();
+        let test_file = temp_dir.join("malformed.md");
+
+        // Write malformed card content
+        let mut file = fs::File::create(&test_file).unwrap();
+        writeln!(file, "Q: This is a question").unwrap();
+        writeln!(file, "C: This is invalid [cloze").unwrap(); // Invalid cloze
+
+        let result = register_all_cards(&db, vec![temp_dir.clone()]).await;
+
+        // Clean up
+        fs::remove_file(&test_file).unwrap();
+        fs::remove_dir(&temp_dir).unwrap();
+
+        // Should return error due to malformed card
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Failed to parse"));
+    }
 }

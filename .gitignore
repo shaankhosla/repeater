@@ -8,3 +8,4 @@ docs/book/
 !CHANGELOG.md
 !docs/**/*.md
 .env
+.idea/
