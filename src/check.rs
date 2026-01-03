@@ -296,9 +296,10 @@ fn render_fsrs_histogram(
             Theme::bullet(),
             Theme::muted_span("Average"),
             Theme::bullet(),
-            Theme::label_span(histogram_stats.mean()
-                .map_or_else(|| "NA - No cards reviewed".to_string(),
-                             |v| format!("{}%", (v * 100.0).round()))),
+            Theme::label_span(histogram_stats.mean().map_or_else(
+                || "NA - No cards reviewed".to_string(),
+                |v| format!("{}%", (v * 100.0).round()),
+            )),
         ]),
         Line::from(Theme::muted_span(description)),
     ])

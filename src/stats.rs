@@ -224,7 +224,11 @@ mod tests {
         histogram.update(0.6);
 
         let mean = histogram.mean().unwrap();
-        assert!((mean - 0.4).abs() < 0.001, "Expected mean ~0.4, got {}", mean);
+        assert!(
+            (mean - 0.4).abs() < 0.001,
+            "Expected mean ~0.4, got {}",
+            mean
+        );
     }
 
     #[test]
@@ -260,6 +264,10 @@ mod tests {
         assert_eq!(total_count, 1);
         assert!(stats.difficulty_histogram.mean().is_some());
         let mean = stats.difficulty_histogram.mean().unwrap();
-        assert!((mean - 0.75).abs() < 0.001, "Expected mean ~0.75, got {}", mean);
+        assert!(
+            (mean - 0.75).abs() < 0.001,
+            "Expected mean ~0.75, got {}",
+            mean
+        );
     }
 }
