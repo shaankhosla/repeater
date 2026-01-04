@@ -362,9 +362,11 @@ async fn resolve_missing_clozes(hash_cards: &mut HashMap<String, Card>) -> Resul
         "There is a Cloze text in your collection that doesn't have a valid cloze []:\n\n",
     );
     user_prompt.push_str(sample_user_cloze);
-    user_prompt.push_str(&format!("\nrepeat can send this text, along with {} other cloze cards without valid clozes, to an LLM to generate a Cloze for you.\n\n", missing.len()));
+    user_prompt.push_str(&format!("\n\nrepeat can send this text, along with {} other cloze card(s) without valid clozes, to an LLM to generate a Cloze for you.\n\n", missing.len()-1));
 
-    let client = ensure_client(&user_prompt).await?;
+    let client = ensure_client(&user_prompt)
+        .await
+       .with_context(|| format!("Failed to initialize LLM client, cannot synthesize Cloze text for {} cards in your collection:\n\n", missing.len()))?;
     let client = Arc::new(client);
 
     let mut tasks = stream::iter(missing.into_iter().map(|(hash, text)| {

@@ -7,12 +7,12 @@ use async_openai::types::{
 };
 use async_openai::{Client, config::OpenAIConfig};
 
-const SERVICE: &str = "com.repeat.cli";
+const SERVICE: &str = "com.repeat.cl";
 const USERNAME: &str = "openai";
 
 use keyring::Entry;
 
-const CLOZE_MODEL: &str = "gpt-4o-mini";
+const CLOZE_MODEL: &str = "gpt-5-nano";
 
 pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let llm_key = load_api_key();
@@ -21,9 +21,7 @@ pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
         Err(_) => {
             let api_key = prompt_user_for_key(user_prompt)?;
             if api_key.is_empty() {
-                return Err(anyhow!(
-                    "No OpenAI API key provided; cannot generate Cloze text automatically"
-                ));
+                return Err(anyhow!("No API key provided"));
             }
             store_api_key(&api_key)?;
             api_key
@@ -96,7 +94,7 @@ fn prompt_user_for_key(prompt: &str) -> Result<String> {
 
     println!("{}", prompt);
     println!(
-        "{green}If you'd like to use an LLM to turn this into a Cloze, enter your OpenAI API{reset} key (https://platform.openai.com/account/api-keys) if you'd like to use this feature. It's stored locally for future use. Leave blank if not."
+        "{green}If you'd like to use an LLM for this feature, please enter your OpenAI API{reset} key (https://platform.openai.com/account/api-keys). It's stored locally for future use. Leave blank if not."
     );
     let _ = io::stdout().flush();
 
