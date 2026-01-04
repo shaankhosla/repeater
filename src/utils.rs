@@ -412,7 +412,7 @@ mod tests {
             .expect("Failed to connect to or initialize database");
         let dir_path = PathBuf::from("test_data");
         let cards = register_all_cards(&db, vec![dir_path]).await.unwrap();
-        assert_eq!(cards.len(), 9);
+        assert_eq!(cards.len(), 10);
         for card in cards.values() {
             assert!(card.file_path.to_string_lossy().contains("test_data"));
         }
@@ -422,6 +422,6 @@ mod tests {
         let cards = register_all_cards(&db, vec![dir_path, file_path])
             .await
             .unwrap();
-        assert_eq!(cards.len(), 9);
+        assert_eq!(cards.len(), 10);
     }
 }

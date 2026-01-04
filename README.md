@@ -28,6 +28,7 @@
 - Progress is tracked with a hash of the card content, so edits automatically reset their progress.
 - Free Spaced Repetition Scheduler (FSRS), a state-of-the-art algorithm targeting 90% recall, automatically schedules reviews for you.
 - Terminal UX: `repeat drill` renders cards with ratatui; `repeat create` launches an editor dedicated to card capture; `repeat check` displays progress at a glance.
+- Inline media support: reference local images/audio/video inside your decks and open them from a drill session without leaving the terminal.
 - Import from Anki: convert `.apkg` exports into Markdown decks with `repeat import` so you can bring your existing collection along.
 
 
@@ -89,8 +90,8 @@ npm install @shaankhosla/repeat
    ```
 
    - `Space`/`Enter`: reveal the answer or cloze.
+   - `O`: open the first media file (image/audio/video) referenced in the current card before revealing the answer.
    - `1`: mark as `Fail`, `2`: mark as `Pass`.
    - `Esc` or `Ctrl+C`: end the session early (progress so far is saved).
-
 
 

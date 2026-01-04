@@ -13,6 +13,13 @@ Example: drill all the physics decks and a single chemistry deck, stopping after
 repeat drill flashcards/science/physics/ flashcards/science/chemistry.md --card-limit 20
 ```
 
+Key bindings inside the drill UI:
+
+- `Space`/`Enter`: reveal the answer or cloze.
+- `1` / `2`: record `Fail`/`Pass`.
+- `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
+- `Esc` / `Ctrl+C`: exit the session.
+
 ### `repeat create <path/to/deck.md>`
 
 Launch the capture editor for a specific Markdown file (it is created if missing).
