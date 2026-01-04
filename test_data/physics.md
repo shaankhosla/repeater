@@ -12,3 +12,12 @@ Into the synaptic cleft
 
 ---
 Class notes continue again here
+
+Let's try a Media file
+
+Q: What's in this image:
+
+
+![Image](synaptic_vessel.jpg)
+
+A: synaptic

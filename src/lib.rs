@@ -8,6 +8,7 @@ pub mod editor;
 pub mod fsrs;
 pub mod import;
 pub mod markdown;
+pub mod media;
 pub mod stats;
 pub mod theme;
 pub mod utils;

@@ -6,6 +6,7 @@ use crate::card::{Card, CardContent};
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::markdown::render_markdown;
+use crate::media::{Media, extract_media};
 use crate::theme::Theme;
 use crate::utils::register_all_cards;
 
@@ -56,6 +57,7 @@ struct DrillState<'a> {
     current_idx: usize,
     show_answer: bool,
     last_action: Option<LastAction>,
+    current_medias: Vec<Media>,
 }
 struct LastAction {
     action: ReviewStatus,
@@ -89,6 +91,7 @@ impl<'a> DrillState<'a> {
             current_idx: 0,
             show_answer: false,
             last_action: None,
+            current_medias: Vec::new(),
         }
     }
 
@@ -190,6 +193,8 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
 
                     let content = format_card_text(&card, state.show_answer);
                     let markdown = render_markdown(&content);
+                    state.current_medias = extract_media(&content);
+
                     let card_widget = Paragraph::new(markdown)
                         .style(Theme::body())
                         .block(Theme::panel_with_line(header_line))
@@ -229,6 +234,12 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
                     KeyCode::Char('2') if state.show_answer => {
                         state.handle_review(ReviewStatus::Pass).await?;
                     }
+                    KeyCode::Char('O') | KeyCode::Char('o')
+                        if !state.show_answer && !state.current_medias.is_empty() =>
+                    {
+                        state.current_medias[0].play()?;
+                    }
+
                     _ => {}
                 }
             }
@@ -264,7 +275,7 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Span::styled(" exit", Theme::muted()),
         ]));
     } else {
-        lines.push(Line::from(vec![
+        let mut line = vec![
             Theme::key_chip("Space"),
             Span::styled(" or ", Theme::muted()),
             Theme::key_chip("Enter"),
@@ -274,7 +285,19 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Span::styled(" / ", Theme::muted()),
             Theme::key_chip("Ctrl+C"),
             Span::styled(" exit", Theme::muted()),
-        ]));
+        ];
+        if !state.current_medias.is_empty() {
+            let num_media = state.current_medias.len();
+            let plural = if num_media == 1 { "" } else { "s" };
+            line.push(Theme::bullet());
+            line.push(Span::styled(
+                format!("{} media file{plural} found in card ", num_media),
+                Theme::muted(),
+            ));
+            line.push(Theme::key_chip("O"));
+            line.push(Span::styled(" open", Theme::muted()));
+        }
+        lines.push(Line::from(line));
     }
 
     if let Some(action) = &state.last_action
