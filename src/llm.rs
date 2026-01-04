@@ -8,7 +8,7 @@ use async_openai::types::{
 };
 use async_openai::{Client, config::OpenAIConfig};
 
-const SERVICE: &str = "com.repeat.cl";
+const SERVICE: &str = "com.repeat";
 const USERNAME: &str = "openai";
 
 use keyring::{Entry, Error as KeyringError};
