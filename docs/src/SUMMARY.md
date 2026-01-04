@@ -9,3 +9,4 @@
 - [Commands](./commands.md)
 - [FSRS Scheduling](./fsrs.md)
 - [Roadmap](./roadmap.md)
+- [FAQ](./faq.md)
