@@ -114,7 +114,6 @@ async fn capture_cards(db: &DB, card_path: &Path) -> io::Result<()> {
     let editor_result: io::Result<()> = async {
         let mut editor = Editor::new();
         let mut status: Option<String> = None;
-
         let unique_hashes: HashSet<_> = existing_cards.into_iter().map(|c| c.card_hash).collect();
 
         let mut num_cards_in_collection = unique_hashes.len();
