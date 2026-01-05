@@ -77,19 +77,9 @@ npm install @shaankhosla/repeat
 
    ---
    Use a separator to mark the end of a card^
-   Then feel free to go back to adding regular notes. 
+   Then feel free to go back to adding regular notes.
 
    C: Speech is [produced] in [Broca's] area.
-
-   You can write Cloze's like this^, but you you can also leave it without
-   brackets to use an LLM generated cloze. For example,
-
-   C: Speech is produced in Broca's area.
-
-   ---
-   The above line will be sent to an LLM, and it will decide the
-   best word(s) to Cloze for you.
-
    ```
 
 
