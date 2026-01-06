@@ -1,10 +1,10 @@
 [package]
-name = "repeat"
-version = "0.0.24"
+name = "repeater"
+version = "0.0.25"
 edition = "2024"
-repository = "https://github.com/shaankhosla/repeat"
+repository = "https://github.com/shaankhosla/repeater"
 description="Spaced repetition, in your terminal"
-homepage = "https://github.com/shaankhosla/repeat"
+homepage = "https://github.com/shaankhosla/repeater"
 authors = ["shaankhosla"]
 
 [dependencies]

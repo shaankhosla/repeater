@@ -14,7 +14,7 @@ pub struct DB {
 
 impl DB {
     pub async fn new() -> Result<Self> {
-        let proj_dirs = ProjectDirs::from("", "", "repeat")
+        let proj_dirs = ProjectDirs::from("", "", "repeater")
             .ok_or_else(|| anyhow!("Could not determine project directory"))?;
 
         let data_dir = proj_dirs.data_dir();

@@ -1,6 +1,6 @@
 # FSRS Scheduling
 
-`repeat` schedules every review with the [Free Spaced Repetition Scheduler](https://github.com/open-spaced-repetition/fsrs4anki/wiki/Free-Spaced-Repetition-Scheduler) (FSRS). The upstream model treats each card's *stability* (how long it can be recalled) and *difficulty* (how hard the content feels) as latent variables and adjusts them after every answer. This page documents how `repeat` applies the model, along with the opinionated choices that make it feel lightweight in a terminal workflow.
+`repeater` schedules every review with the [Free Spaced Repetition Scheduler](https://github.com/open-spaced-repetition/fsrs4anki/wiki/Free-Spaced-Repetition-Scheduler) (FSRS). The upstream model treats each card's *stability* (how long it can be recalled) and *difficulty* (how hard the content feels) as latent variables and adjusts them after every answer. This page documents how `repeater` applies the model, along with the opinionated choices that make it feel lightweight in a terminal workflow.
 
 ## Core Parameters
 
@@ -10,7 +10,7 @@
 
 ## Simplified Feedback Model
 
-Classic FSRS expects four answer buttons. `repeat` distills that into two hotkeys: `Pass` and `Fail`. Internally those map to quality scores of 3 and 1 respectively, so the formulas for `initial_stability`, `initial_difficulty`, `delta_d`, and `calculate_stability` still behave correctly. The benefit is a fast keyboard workflow; the trade-off is that you can't express nuances like "Hard" or "Easy", so the algorithm falls back to its conservative defaults when scheduling recoveries after a lapse.
+Classic FSRS expects four answer buttons. `repeater` distills that into two hotkeys: `Pass` and `Fail`. Internally those map to quality scores of 3 and 1 respectively, so the formulas for `initial_stability`, `initial_difficulty`, `delta_d`, and `calculate_stability` still behave correctly. The benefit is a fast keyboard workflow; the trade-off is that you can't express nuances like "Hard" or "Easy", so the algorithm falls back to its conservative defaults when scheduling recoveries after a lapse.
 
 ## Early Review Ramp
 
@@ -41,5 +41,5 @@ These caps override the usual interval just for the first few answers, which kee
 
 ## Further Reading
 
-- [FSRS whitepaper & wiki](https://github.com/open-spaced-repetition/fsrs4anki/wiki/Free-Spaced-Repetition-Scheduler) — background on the equations `repeat` calls into.
+- [FSRS whitepaper & wiki](https://github.com/open-spaced-repetition/fsrs4anki/wiki/Free-Spaced-Repetition-Scheduler) — background on the equations `repeater` calls into.
 - [FSRS weights repository](https://github.com/open-spaced-repetition/fsrs4anki) — reference implementation and tuning scripts if you want to experiment with your own parameter set.

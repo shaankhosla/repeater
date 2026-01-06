@@ -1,6 +1,6 @@
 # Media in Cards
 
-`repeat` scans every rendered card for media references (images, audio, and video). When the drill UI detects at least one supported file, you can press `O` before revealing the answer to open the first attachment in your operating system’s default viewer/player. This keeps cards lightweight in the terminal while still letting you jump into richer references on demand.
+`repeater` scans every rendered card for media references (images, audio, and video). When the drill UI detects at least one supported file, you can press `O` before revealing the answer to open the first attachment in your operating system’s default viewer/player. This keeps cards lightweight in the terminal while still letting you jump into richer references on demand.
 
 ## Supported formats
 
@@ -14,7 +14,7 @@ Other links remain untouched so regular hyperlinks still work in your Markdown o
 
 ## Referencing media in Markdown
 
-Use normal Markdown syntax for images (`![Alt](path/to/file.png)`) or links (`[label](path/to/file.mp3)`). `repeat` reads the destination path and decides if it looks like media based on the extension.
+Use normal Markdown syntax for images (`![Alt](path/to/file.png)`) or links (`[label](path/to/file.mp3)`). `repeater` reads the destination path and decides if it looks like media based on the extension.
 
 Relative paths are resolved from the directory that contains the deck file. For example, if your deck lives at `notes/physics/waves.md`, then:
 

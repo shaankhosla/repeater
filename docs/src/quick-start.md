@@ -3,7 +3,7 @@
 1. **Create a deck in Markdown (`cards/neuro.md`).**
 
    ```markdown
-   You can put your normal notes here, `repeat` will ignore them.
+   You can put your normal notes here, `repeater` will ignore them.
    Once a "Q:,A:,C:" block is detected, it will automatically
    turn it into a card.
 
@@ -20,13 +20,13 @@
    Alternatively, launch the built-in editor with:
 
    ```sh
-   repeat create cards/neuro.md
+   repeater create cards/neuro.md
    ```
 
 2. **Index the cards and start a drill session.**
 
    ```sh
-   repeat drill cards
+   repeater drill cards
    ```
 
    - `Space`/`Enter`: reveal the answer or cloze.
@@ -37,7 +37,7 @@
 3. **Check your collection status.**
 
    ```sh
-   repeat check cards
+   repeater check cards
    ```
 
    This launches the full-screen dashboard that shows totals, due/overdue cards, and upcoming workload; press `Esc` or `Ctrl+C` when you want to exit.

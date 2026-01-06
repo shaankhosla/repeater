@@ -1,6 +1,6 @@
 # Commands
 
-### `repeat drill [PATH ...]`
+### `repeater drill [PATH ...]`
 
 Start a terminal drilling session for one or more files/directories (default: current directory).
 
@@ -10,7 +10,7 @@ Start a terminal drilling session for one or more files/directories (default: cu
 Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards.
 
 ```sh
-repeat drill flashcards/science/physics/ flashcards/science/chemistry.md --card-limit 20
+repeater drill flashcards/science/physics/ flashcards/science/chemistry.md --card-limit 20
 ```
 
 Key bindings inside the drill UI:
@@ -20,7 +20,7 @@ Key bindings inside the drill UI:
 - `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
 - `Esc` / `Ctrl+C`: exit the session.
 
-### `repeat create <path/to/deck.md>`
+### `repeater create <path/to/deck.md>`
 
 Launch the capture editor for a specific Markdown file (it is created if missing).
 
@@ -33,25 +33,25 @@ Launch the capture editor for a specific Markdown file (it is created if missing
 Example:
 
 ```sh
-repeat create cards/neuro.md
+repeater create cards/neuro.md
 ```
 
-### `repeat check [PATH ...]`
+### `repeater check [PATH ...]`
 
 Re-index the referenced decks and open the interactive dashboard with totals for new, due, overdue, and upcoming cards (press `Esc`/`Ctrl+C` to exit).
 
 Example:
 
 ```sh
-repeat check flashcards/math/
+repeater check flashcards/math/
 ```
 
-### `repeat import <anki.apkg> <output-dir>`
+### `repeater import <anki.apkg> <output-dir>`
 
 Convert an Anki `.apkg` export into Markdown decks. Existing files in the export folder are overwritten, so rerunning is safe. FSRS history is not yet transferred.
 
 Example:
 
 ```sh
-repeat import ~/Downloads/my_collection.apkg cards/anki
+repeater import ~/Downloads/my_collection.apkg cards/anki
 ```

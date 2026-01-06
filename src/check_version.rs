@@ -74,7 +74,7 @@ async fn get_latest() -> Result<Release> {
     const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
     let release: Release = client
-        .get("https://api.github.com/repos/shaankhosla/repeat/releases/latest")
+        .get("https://api.github.com/repos/shaankhosla/repeater/releases/latest")
         .header("User-Agent", USER_AGENT)
         .timeout(Duration::from_millis(TIMEOUT))
         .send()
@@ -96,12 +96,14 @@ pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification)
     let blue = "\x1b[34m";
 
     println!(
-        "\nA new version of {cyan}repeat{reset} is available! \
+        "\nA new version of {cyan}repeater{reset} is available! \
          {red}{}{reset} -> {green}{}{reset}",
         notification.current_version, notification.latest_version
     );
 
-    println!("Check {blue}https://github.com/shaankhosla/repeat/releases{reset} for more details");
+    println!(
+        "Check {blue}https://github.com/shaankhosla/repeater/releases{reset} for more details"
+    );
 
     println!("{dim}Press any key to dismiss (I'll remind you again in a few days){reset}");
     let _ = io::stdout().flush();

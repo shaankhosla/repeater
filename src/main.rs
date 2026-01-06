@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueHint};
 
-use repeat::crud::DB;
-use repeat::{check, create, drill, import};
+use repeater::crud::DB;
+use repeater::{check, create, drill, import};
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "repeat",
+    name = "repeater",
     version,
     about = "Spaced repetition for the terminal.",
     long_about = None,
@@ -97,7 +97,7 @@ async fn run_cli() -> Result<()> {
         Command::Import {
             anki_path,
             export_path,
-        } => import::run(&db, &anki_path, &export_path).await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeat")?,
+        } => import::run(&db, &anki_path, &export_path).await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeater")?,
     }
 
     Ok(())

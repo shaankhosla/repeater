@@ -557,7 +557,7 @@ mod tests {
             .expect("Failed to connect to or initialize database");
 
         // Create a temporary directory with a malformed markdown file
-        let temp_dir = std::env::temp_dir().join("repeat_test_malformed");
+        let temp_dir = std::env::temp_dir().join("repeater_test_malformed");
         fs::create_dir_all(&temp_dir).unwrap();
         let test_file = temp_dir.join("malformed.md");
 
