@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use crate::card::Card;
-use crate::crud::CardStatsRow;
+use crate::crud::stats::CardStatsRow;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, calculate_recall};
 
 #[derive(Debug, Default)]
@@ -131,6 +131,7 @@ mod tests {
     use super::*;
     use crate::card::{Card, CardContent};
     use chrono::{Duration, Utc};
+    use std::path::PathBuf;
 
     fn sample_card(path: &str) -> Card {
         Card {

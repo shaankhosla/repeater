@@ -1,100 +1,20 @@
 use anyhow::Result;
-use directories::ProjectDirs;
 use futures::TryStreamExt;
-use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use std::collections::HashMap;
-use std::str::FromStr;
 
 use anyhow::anyhow;
 
 use crate::card::Card;
-use crate::check_version::VersionUpdateStats;
+
 use crate::fsrs::ReviewStatus;
 use crate::fsrs::ReviewedPerformance;
 use crate::fsrs::update_performance;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, Performance};
-use crate::stats::CardStats;
 
-#[derive(Clone)]
-pub struct DB {
-    pool: SqlitePool,
-}
+use super::DB;
 
 impl DB {
-    pub async fn new() -> Result<Self> {
-        let proj_dirs = ProjectDirs::from("", "", "repeat")
-            .ok_or_else(|| anyhow!("Could not determine project directory"))?;
-
-        let data_dir = proj_dirs.data_dir();
-        std::fs::create_dir_all(data_dir)?;
-
-        let db_path = data_dir.join("cards.db");
-
-        let options =
-            SqliteConnectOptions::from_str(&db_path.to_string_lossy())?.create_if_missing(true);
-
-        Self::connect(options).await
-    }
-    async fn connect(options: SqliteConnectOptions) -> Result<Self> {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await?;
-
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        Ok(Self { pool })
-    }
-    pub async fn get_version_update_information(&self) -> Result<VersionUpdateStats> {
-        let stats = sqlx::query_as!(
-            VersionUpdateStats,
-            r#"
-        SELECT
-            last_prompted_at        AS "last_prompted_at?: chrono::DateTime<chrono::Utc>",
-            last_version_check_at   AS "last_version_check_at?: chrono::DateTime<chrono::Utc>"
-        FROM version_update
-        "#
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-
-        Ok(stats.unwrap_or_default())
-    }
-    pub async fn update_last_prompted_at(&self) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-        sqlx::query!(
-            r#"
-            INSERT INTO version_update (id, last_prompted_at)
-            VALUES (1, $1)
-            ON CONFLICT (id)
-            DO UPDATE SET last_prompted_at = EXCLUDED.last_prompted_at
-            "#,
-            now
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn update_last_version_check_at(&self) -> Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
-        sqlx::query!(
-            r#"
-            INSERT INTO version_update (id, last_version_check_at)
-            VALUES (1, $1)
-            ON CONFLICT (id)
-            DO UPDATE SET last_version_check_at = EXCLUDED.last_version_check_at
-            "#,
-            now
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
     pub async fn add_card(&self, card: &Card) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
 
@@ -316,58 +236,6 @@ impl DB {
         }
 
         Ok(cards)
-    }
-
-    pub async fn collection_stats(&self, card_hashes: &HashMap<String, Card>) -> Result<CardStats> {
-        let mut stats = CardStats {
-            num_cards: card_hashes.len() as i64,
-            ..Default::default()
-        };
-
-        let mut rows = sqlx::query_as!(
-            CardStatsRow,
-            r#"
-            SELECT
-                card_hash,
-                review_count as "review_count!: i64",
-                due_date as "due_date?: chrono::DateTime<chrono::Utc>",
-                interval_raw as "interval_raw?: f64",
-                difficulty as "difficulty?: f64",
-                stability as "stability?: f64",
-                last_reviewed_at as "last_reviewed_at?: chrono::DateTime<chrono::Utc>"
-            FROM cards
-            "#,
-        )
-        .fetch(&self.pool);
-
-        while let Some(row) = rows.try_next().await? {
-            stats.total_cards_in_db += 1;
-            let card = match card_hashes.get(&row.card_hash) {
-                Some(card) => card,
-                None => continue,
-            };
-            stats.update(card, &row);
-        }
-
-        Ok(stats)
-    }
-}
-
-pub struct CardStatsRow {
-    pub card_hash: String,
-    pub review_count: i64,
-    pub due_date: Option<chrono::DateTime<chrono::Utc>>,
-    pub interval_raw: Option<f64>,
-    pub difficulty: Option<f64>,
-    pub stability: Option<f64>,
-    pub last_reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-#[cfg(test)]
-impl DB {
-    pub async fn new_in_memory() -> Result<Self> {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")?;
-        Self::connect(options).await
     }
 }
 
