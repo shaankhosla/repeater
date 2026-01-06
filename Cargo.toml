@@ -31,6 +31,7 @@ reqwest = { version = "0.11", features = ["json"] }
 async-openai = "0.30.1"
 keyring = "2"
 open = "5"
+rpassword = "7.4.0"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio" ] }

@@ -8,7 +8,7 @@ use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::markdown::render_markdown;
 use crate::media::{Media, extract_media};
 use crate::theme::Theme;
-use crate::utils::register_all_cards;
+use crate::utils::{register_all_cards, resolve_missing_clozes};
 
 use anyhow::{Context, Result};
 use crossterm::event::KeyModifiers;
@@ -38,13 +38,16 @@ pub async fn run(
     new_card_limit: Option<usize>,
 ) -> Result<()> {
     let hash_cards = register_all_cards(db, paths).await?;
-    let cards_due_today = db.due_today(hash_cards, card_limit, new_card_limit).await?;
+    let mut cards_due_today = db
+        .due_today(&hash_cards, card_limit, new_card_limit)
+        .await?;
 
     if cards_due_today.is_empty() {
         println!("All caught up—no cards due today.");
         return Ok(());
     }
 
+    resolve_missing_clozes(&mut cards_due_today).await?;
     start_drill_session(db, cards_due_today).await?;
 
     Ok(())
@@ -330,7 +333,7 @@ fn format_card_text(card: &Card, show_answer: bool) -> String {
                 (Some(range), false) => mask_cloze_text(text, range),
                 _ => text.clone(),
             };
-            format!("Cloze:\n{}", body)
+            format!("C:\n{}", body)
         }
     }
 }
@@ -402,7 +405,6 @@ mod tests {
             .unwrap()
             .unwrap();
         let masked = mask_cloze_text(text, &range);
-        dbg!(&masked);
         assert_eq!(masked, "Capital of 日本 is [___]");
     }
 

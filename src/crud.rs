@@ -261,7 +261,7 @@ impl DB {
 
     pub async fn due_today(
         &self,
-        card_hashes: HashMap<String, Card>,
+        card_hashes: &HashMap<String, Card>,
         card_limit: Option<usize>,
         new_card_limit: Option<usize>,
     ) -> Result<Vec<Card>> {
@@ -404,7 +404,7 @@ mod tests {
         assert_eq!(stats.card_lifecycles.get(&CardLifeCycle::New).unwrap(), &1);
 
         // should be due today
-        let due_today_cards = db.due_today(card_hashes, None, None).await.unwrap();
+        let due_today_cards = db.due_today(&card_hashes, None, None).await.unwrap();
         assert_eq!(due_today_cards.len(), 1);
 
         // check short-term scheduling

@@ -1,5 +1,4 @@
 use std::env;
-use std::io::{self, Write};
 
 use anyhow::{Context, Result, anyhow, bail};
 use async_openai::types::{
@@ -7,9 +6,10 @@ use async_openai::types::{
     CreateChatCompletionRequestArgs,
 };
 use async_openai::{Client, config::OpenAIConfig};
+use rpassword::read_password;
 
 const SERVICE: &str = "com.repeat";
-const USERNAME: &str = "openai";
+const USERNAME: &str = "openai:default";
 
 use keyring::{Entry, Error as KeyringError};
 
@@ -22,9 +22,18 @@ Only add one Cloze deletion.
 
 const USER_PROMPT_HEADER: &str = r#"
 Turn the following text into a Cloze card by inserting [] around the hidden portion.
-Return the exact same text, only with brackets added.
+Return the exact same text as below, but just with the addition of brackets around the Cloze deletion. 
+Your goal is to highlight the part of the flashcard you believe is most critical for a studying user to be able to recall.
+It can be a word or a small phrase. For example, if you were shown the follwing text:
 
-Text:
+C: Speech is produced in Broca's area.
+
+This might be a good response to produce:
+
+C: Speech is produced in [Broca's] area.
+
+This is the text you should generate the Cloze deletion for:
+
 "#;
 
 pub const API_KEY_ENV: &str = "REPEAT_OPENAI_API_KEY";
@@ -44,7 +53,7 @@ impl ApiKeySource {
     }
 }
 
-pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
+pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let key = match resolve_configured_api_key()? {
         Some((api_key, _source)) => api_key,
         None => {
@@ -60,14 +69,13 @@ pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
         }
     };
     let client = initialize_client(&key)?;
-    healthcheck_client(&client).await?;
     Ok(client)
 }
 
 pub async fn test_configured_api_key() -> Result<ApiKeySource> {
     let (key, source) = resolve_configured_api_key()?.ok_or_else(|| {
         anyhow!(
-            "No API key configured. Set {} or run `repeat llm key --set <KEY>`.",
+            "LLM features are disabled. To enable, set {} or run `repeat llm key --set <KEY>`.",
             API_KEY_ENV
         )
     })?;
@@ -97,15 +105,14 @@ async fn healthcheck_client(client: &Client<OpenAIConfig>) -> Result<()> {
         .models()
         .list()
         .await
-        .context("Failed to call LLM provider")?;
+        .context("Failed to validate API key with OpenAI")?;
     Ok(())
 }
 
 pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<String> {
     let request = CreateChatCompletionRequestArgs::default()
         .model(CLOZE_MODEL)
-        .max_tokens(200_u32)
-        .temperature(0.2)
+        .max_completion_tokens(5000_u32)
         .messages([
             ChatCompletionRequestSystemMessageArgs::default()
                 .content(SYSTEM_PROMPT)
@@ -145,12 +152,9 @@ pub fn prompt_for_api_key(prompt: &str) -> Result<String> {
         dim = dim,
         reset = reset
     );
-    let _ = io::stdout().flush();
 
-    let mut user_input = String::new();
-    io::stdin().read_line(&mut user_input)?;
-    let trimmed = user_input.trim();
-    Ok(trimmed.to_string())
+    let input = read_password().context("Failed to read API key")?;
+    Ok(input.trim().to_string())
 }
 
 pub fn store_api_key(api_key: &str) -> Result<()> {
@@ -192,5 +196,5 @@ fn load_stored_api_key() -> Result<Option<String>> {
 }
 
 fn build_user_prompt(text: &str) -> String {
-    format!("{header}{text}\n", header = USER_PROMPT_HEADER, text = text)
+    format!("{USER_PROMPT_HEADER}{text}")
 }
