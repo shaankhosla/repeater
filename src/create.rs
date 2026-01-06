@@ -1,8 +1,8 @@
 use crate::{
     card::CardType,
     crud::DB,
-    editor::Editor,
-    theme::Theme,
+    tui::Editor,
+    tui::Theme,
     utils::{cards_from_md, content_to_card, is_markdown},
 };
 

@@ -2,7 +2,7 @@ use crate::{
     check_version::{check_version, prompt_for_new_version},
     crud::DB,
     stats::{CardLifeCycle, CardStats, Histogram},
-    theme::Theme,
+    tui::Theme,
     utils::register_all_cards,
 };
 

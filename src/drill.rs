@@ -7,7 +7,7 @@ use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::markdown::render_markdown;
 use crate::media::{Media, extract_media};
-use crate::theme::Theme;
+use crate::tui::Theme;
 use crate::utils::{register_all_cards, resolve_missing_clozes};
 
 use anyhow::{Context, Result};
