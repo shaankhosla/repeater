@@ -8,7 +8,7 @@ homepage = "https://github.com/shaankhosla/repeat"
 authors = ["shaankhosla"]
 
 [dependencies]
-clap = { version = "4.5.53", features = ["derive"] }
+clap = { version = "4.5.54", features = ["derive"] }
 ratatui = "0.30.0"
 crossterm = "0.29"
 anyhow = "1.0.100"
