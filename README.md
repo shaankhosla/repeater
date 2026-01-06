@@ -44,8 +44,7 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/shaankhosla/repeater/re
 ### Homebrew (macOS)
 
 ```
-brew tap shaankhosla/homebrew-tap
-brew install repeater
+brew install shaankhosla/tap/repeater
 ```
 
 ### Windows (PowerShell)
