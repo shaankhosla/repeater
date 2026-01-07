@@ -478,9 +478,7 @@ pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
             text, cloze_range, ..
         } = &mut card.content
         {
-            dbg!(&new_cloze_text);
             let cloze_idxs = find_cloze_ranges(&new_cloze_text);
-            dbg!(&cloze_idxs);
             let new_cloze_range: ClozeRange = cloze_idxs
                 .first()
                 .map(|(start, end)| ClozeRange::new(*start, *end))

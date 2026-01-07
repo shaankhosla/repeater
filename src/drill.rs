@@ -407,6 +407,21 @@ mod tests {
             .unwrap();
         let masked = mask_cloze_text(text, &range);
         assert_eq!(masked, "Capital of 日本 is [___]");
+
+        let text = "Capital of 日本 is [longer text is in this bracket]";
+
+        let cloze_idxs = find_cloze_ranges(text);
+        let range: ClozeRange = cloze_idxs
+            .first()
+            .map(|(start, end)| ClozeRange::new(*start, *end))
+            .transpose()
+            .unwrap()
+            .unwrap();
+        let masked = mask_cloze_text(text, &range);
+        assert_eq!(
+            masked,
+            "Capital of 日本 is [______________________________]"
+        );
     }
 
     #[test]
