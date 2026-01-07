@@ -109,7 +109,10 @@ async fn run_cli() -> Result<()> {
         Command::Import {
             anki_path,
             export_path,
-        } => import::run(&db, &anki_path, &export_path).await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeater")?,
+        } => {
+            import::run(&db, &anki_path, &export_path)
+                .await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeater")?
+        },
         Command::Llm { set, clear, test } => handle_llm_command(set, clear, test).await?,
     }
 
