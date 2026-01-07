@@ -8,7 +8,7 @@ use async_openai::types::{
 use async_openai::{Client, config::OpenAIConfig};
 use rpassword::read_password;
 
-const SERVICE: &str = "com.repeat";
+const SERVICE: &str = "com.repeater";
 const USERNAME: &str = "openai:default";
 
 use keyring::{Entry, Error as KeyringError};
@@ -36,7 +36,7 @@ This is the text you should generate the Cloze deletion for:
 
 "#;
 
-pub const API_KEY_ENV: &str = "REPEAT_OPENAI_API_KEY";
+pub const API_KEY_ENV: &str = "REPEATER_OPENAI_API_KEY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiKeySource {

@@ -8,7 +8,7 @@
 
 ## API keys
 - `repeater llm --set <KEY>` saves the key via the OS keyring (`com.repeat/openai:default`), so macOS Keychain/Windows Credential Manager/libsecret hold it securely.
-- `REPEAT_OPENAI_API_KEY` overrides the keyring for temporary runs.
+- `REPEATER_OPENAI_API_KEY` overrides the keyring for temporary runs.
 - `repeater llm --test` confirms the key with OpenAI, `repeater llm --clear` forgets it instantly.
 
 ## Cloze generation
