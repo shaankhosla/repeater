@@ -60,7 +60,7 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
             let api_key = prompt_for_api_key(user_prompt)?;
             if api_key.is_empty() {
                 return Err(anyhow!(
-                    "No API key provided. Set {} or run `repeat llm key --set <KEY>`.",
+                    "No API key provided. Set {} or run `repeater llm key --set <KEY>`.",
                     API_KEY_ENV
                 ));
             }
@@ -75,7 +75,7 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
 pub async fn test_configured_api_key() -> Result<ApiKeySource> {
     let (key, source) = resolve_configured_api_key()?.ok_or_else(|| {
         anyhow!(
-            "LLM features are disabled. To enable, set {} or run `repeat llm key --set <KEY>`.",
+            "LLM features are disabled. To enable, set {} or run `repeater llm key --set <KEY>`.",
             API_KEY_ENV
         )
     })?;

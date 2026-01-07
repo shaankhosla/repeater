@@ -60,8 +60,8 @@ repeater import ~/Downloads/my_collection.apkg cards/anki
 
 Manage the optional OpenAI helper that can auto-cloze cards missing brackets before a drill.
 
-- `--set <KEY>`: write the key to the local keyring (`com.repeat/openai:default`).
+- `--set <KEY>`: write the key to the local keyring (`com.repeater/openai:default`).
 - `--test`: verify the configured key by calling OpenAI.
 - `--clear`: delete the stored key; use this when rotating credentials.
 
-Instead of `--set`, you can export `REPEAT_OPENAI_API_KEY` for one-off runs. Skip configuring this command entirely to keep the feature disabled.
+Instead of `--set`, you can export `REPEATER_OPENAI_API_KEY` for one-off runs. Skip configuring this command entirely to keep the feature disabled.
