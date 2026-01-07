@@ -226,13 +226,12 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
                     KeyCode::Char(' ') | KeyCode::Enter => {
                         if !state.show_answer {
                             state.reveal_answer();
+                        } else {
+                            state.handle_review(ReviewStatus::Pass).await?;
                         }
                     }
-                    KeyCode::Char('1') if state.show_answer => {
+                    KeyCode::Char('F') | KeyCode::Char('f') if state.show_answer => {
                         state.handle_review(ReviewStatus::Fail).await?;
-                    }
-                    KeyCode::Char('2') if state.show_answer => {
-                        state.handle_review(ReviewStatus::Pass).await?;
                     }
                     KeyCode::Char('O') | KeyCode::Char('o')
                         if !state.show_answer && !state.current_medias.is_empty() =>
@@ -263,11 +262,13 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if state.show_answer {
         lines.push(Line::from(vec![
-            Theme::key_chip("1"),
-            Span::styled(" Fail", Theme::danger()),
-            Theme::bullet(),
-            Theme::key_chip("2"),
+            Theme::key_chip("Space"),
+            Span::styled(" or ", Theme::muted()),
+            Theme::key_chip("Enter"),
             Span::styled(" Pass", Theme::success()),
+            Theme::bullet(),
+            Theme::key_chip("F"),
+            Span::styled(" Fail", Theme::danger()),
             Theme::bullet(),
             Theme::key_chip("Esc"),
             Span::styled(" / ", Theme::muted()),
