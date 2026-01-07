@@ -16,7 +16,7 @@ repeater drill flashcards/science/physics/ flashcards/science/chemistry.md --car
 Key bindings inside the drill UI:
 
 - `Space`/`Enter`: reveal the answer or cloze.
-- `1` / `2`: record `Fail`/`Pass`.
+   - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
 - `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
 - `Esc` / `Ctrl+C`: exit the session.
 

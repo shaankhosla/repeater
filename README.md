@@ -87,5 +87,5 @@ npm install @shaankhosla/repeater
 
    - `Space`/`Enter`: reveal the answer or cloze.
    - `O`: open the first media file (image/audio/video) referenced in the current card before revealing the answer.
-   - `1`: mark as `Fail`, `2`: mark as `Pass`.
+   - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
    - `Esc` or `Ctrl+C`: end the session early (progress so far is saved).
