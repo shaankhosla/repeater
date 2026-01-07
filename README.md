@@ -30,6 +30,7 @@
 - **FSRS scheduling**: automatic reviews targeting ~90% recall (simple Pass/Fail).
 - **Terminal workflow**: drill TUI, capture editor, and progress dashboard (`drill`, `create`, `check`).
 - **Media + migration**: open linked images/audio/video; import Anki `.apkg` to Markdown.
+- **Optional LLM helper**: add an OpenAI key once and missing Cloze brackets are auto-suggested before drills.
 
 
 ## Installation
@@ -88,3 +89,4 @@ npm install @shaankhosla/repeater
    - `O`: open the first media file (image/audio/video) referenced in the current card before revealing the answer.
    - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
    - `Esc` or `Ctrl+C`: end the session early (progress so far is saved).
+
