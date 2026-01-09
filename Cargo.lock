@@ -3285,7 +3285,6 @@ dependencies = [
  "keyring",
  "once_cell",
  "open",
- "phf",
  "proptest",
  "pulldown-cmark",
  "ratatui",

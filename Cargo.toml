@@ -32,7 +32,6 @@ keyring = "2"
 reqwest = { version = "0.13", features = ["json"] }
 open = "5"
 rpassword = "7.4.0"
-phf = { version = "0.11", features = ["macros"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio" ] }
