@@ -186,12 +186,9 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
                             state.cards.len()
                         )),
                         Theme::bullet(),
-                        Span::styled(
-                            format!("{} coming again", state.redo_cards.len()),
-                            Theme::muted(),
-                        ),
+                        Theme::span(format!("{} coming again", state.redo_cards.len())),
                         Theme::bullet(),
-                        Span::styled(card.file_path.display().to_string(), Theme::muted()),
+                        Theme::span(card.file_path.display().to_string()),
                     ]);
 
                     let content = format_card_text(&card, state.show_answer);
@@ -199,14 +196,12 @@ async fn start_drill_session(db: &DB, cards: Vec<Card>) -> Result<()> {
                     state.current_medias = extract_media(&content, card.file_path.parent());
 
                     let card_widget = Paragraph::new(markdown)
-                        .style(Theme::body())
                         .block(Theme::panel_with_line(header_line))
                         .wrap(Wrap { trim: false });
                     frame.render_widget(card_widget, chunks[0]);
 
                     let instructions = instructions_text(&state);
                     let footer = Paragraph::new(instructions)
-                        .style(Theme::body())
                         .block(Theme::panel_with_line(Theme::section_header("Controls")));
                     frame.render_widget(footer, chunks[1]);
                 })
@@ -266,7 +261,7 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
     if state.show_answer {
         lines.push(Line::from(vec![
             Theme::key_chip("Space"),
-            Span::styled(" or ", Theme::muted()),
+            Theme::span(" or "),
             Theme::key_chip("Enter"),
             Span::styled(" Pass", Theme::success()),
             Theme::bullet(),
@@ -274,32 +269,32 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Span::styled(" Fail", Theme::danger()),
             Theme::bullet(),
             Theme::key_chip("Esc"),
-            Span::styled(" / ", Theme::muted()),
+            Theme::span(" / "),
             Theme::key_chip("Ctrl+C"),
-            Span::styled(" exit", Theme::muted()),
+            Theme::span(" exit"),
         ]));
     } else {
         let mut line = vec![
             Theme::key_chip("Space"),
-            Span::styled(" or ", Theme::muted()),
+            Theme::span(" or "),
             Theme::key_chip("Enter"),
-            Span::styled(" show answer", Theme::muted()),
+            Theme::span(" show answer"),
             Theme::bullet(),
             Theme::key_chip("Esc"),
-            Span::styled(" / ", Theme::muted()),
+            Theme::span(" / "),
             Theme::key_chip("Ctrl+C"),
-            Span::styled(" exit", Theme::muted()),
+            Theme::span(" exit"),
         ];
         if !state.current_medias.is_empty() {
             let num_media = state.current_medias.len();
             let plural = if num_media == 1 { "" } else { "s" };
             line.push(Theme::bullet());
-            line.push(Span::styled(
-                format!("{} media file{plural} found in card ", num_media),
-                Theme::muted(),
-            ));
+            line.push(Theme::span(format!(
+                "{} media file{plural} found in card ",
+                num_media
+            )));
             line.push(Theme::key_chip("O"));
-            line.push(Span::styled(" open", Theme::muted()));
+            line.push(Theme::span(" open"));
         }
         lines.push(Line::from(line));
     }
@@ -312,7 +307,7 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             ReviewStatus::Fail => Theme::danger(),
         };
         lines.push(Line::from(vec![
-            Theme::muted_span("Last:"),
+            Theme::span("Last:"),
             Span::styled(action.print(), style),
         ]));
     }

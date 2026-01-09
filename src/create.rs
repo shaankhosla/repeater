@@ -128,7 +128,6 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
 
                 let editor_block = Theme::panel(card_path.display().to_string());
                 let editor_widget = Paragraph::new(editor.content())
-                    .style(Theme::body())
                     .block(editor_block)
                     .wrap(Wrap { trim: false })
                     .scroll((editor.scroll_top() as u16, 0));
@@ -136,24 +135,24 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
 
                 let mut help_lines = vec![Line::from(vec![
                     Theme::key_chip("Ctrl+B"),
-                    Span::styled(" basic", Theme::muted()),
+                    Theme::span(" basic"),
                     Theme::bullet(),
                     Theme::key_chip("Ctrl+K"),
-                    Span::styled(" cloze", Theme::muted()),
+                    Theme::span(" cloze"),
                     Theme::bullet(),
                     Theme::key_chip("Ctrl+S"),
-                    Span::styled(" save", Theme::muted()),
+                    Theme::span(" save"),
                     Theme::bullet(),
                     Theme::key_chip("Esc"),
-                    Span::styled(" / ", Theme::muted()),
+                    Theme::span(" / "),
                     Theme::key_chip("Ctrl+C"),
-                    Span::styled(" exit", Theme::muted()),
+                    Theme::span(" exit"),
                 ])];
                 help_lines.push(Line::from(vec![
-                    Span::styled("Cards in collection:", Theme::muted()),
+                    Theme::span("Cards in collection:"),
                     Theme::label_span(format!(" {}", num_cards_in_collection)),
                     Theme::bullet(),
-                    Span::styled("Created this session:", Theme::muted()),
+                    Theme::span("Created this session:"),
                     Theme::label_span(format!(" {}", card_created_count)),
                 ]));
                 if let Some(time) = card_last_save_attempt
@@ -170,7 +169,6 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
                 }
 
                 let instructions = Paragraph::new(help_lines)
-                    .style(Theme::body())
                     .block(Theme::panel_with_line(Theme::section_header("Help")))
                     .wrap(Wrap { trim: true });
                 frame.render_widget(instructions, chunks[1]);
