@@ -37,10 +37,9 @@ In practice, this means less flexibility but much less friction. You edit cards 
 ## Features
 
 - **Markdown-first decks**: write basic Q/A + cloze cards in plain `.md` alongside your notes.
+- **Media support**: open linked images/audio/video.
+- **Anki import**: import your existing Anki decks `.apkg` to Markdown.
 - **Stable card identity**: “meaning-only” hashing; formatting tweaks don’t reset progress.
-- **FSRS scheduling**: automatic reviews targeting ~90% recall (simple Pass/Fail).
-- **Terminal workflow**: drill TUI, capture editor, and progress dashboard (`drill`, `create`, `check`).
-- **Media + migration**: open linked images/audio/video; import Anki `.apkg` to Markdown.
 - **Optional LLM helper**: add an OpenAI key once and missing Cloze brackets are auto-suggested before drills.
 
 
