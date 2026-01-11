@@ -1,11 +1,12 @@
 [package]
 name = "repeater"
-version = "0.0.25"
+version = "0.0.26"
 edition = "2024"
 repository = "https://github.com/shaankhosla/repeater"
 description="Spaced repetition, in your terminal"
 homepage = "https://github.com/shaankhosla/repeater"
-authors = ["shaankhosla"]
+license-file = "LICENSE"
+authors = ["Shaan Khosla <shaan.khosla@proton.me>"]
 
 [dependencies]
 clap = { version = "4.5.54", features = ["derive"] }
