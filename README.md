@@ -28,6 +28,11 @@
 
 ## How is this different than Anki?
 
+[Anki](https://apps.ankiweb.net) is a powerful and flexible spaced-repetition system with a mature GUI, mobile apps, and a large plugin ecosystem. If you want a highly customizable study system, Anki is an excellent choice.
+
+`repeater` takes a different approach. Instead of asking you to move your active-recall material into a separate application, your notes themselves are the source of truth. Flashcards live directly inside plain Markdown files, alongside regular notes, and are detected automatically. There is no card editor, no syncing layer, and no separate “collection” to manage.
+
+In practice, this means less flexibility but much less friction. You edit cards the same way you edit notes, using the same tools, and can easily inspect, version, or refactor your material without exports or migrations. The goal is not to replace Anki’s ecosystem, but to offer a simpler, text-first workflow for people who prefer minimalism, the terminal, and plain files over feature depth.
 
 ## Features
 
