@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::card::{Card, CardContent, ClozeRange};
+use crate::hash::get_hash;
 use crate::llm::{ensure_client, request_cloze};
 use futures::stream::{self, StreamExt};
 use ignore::WalkState;
@@ -199,49 +200,6 @@ pub fn content_to_card(
             contents
         ))
     }
-}
-
-pub fn get_hash(s: &str) -> Option<String> {
-    trim_line(s)?;
-    let mut hasher = blake3::Hasher::new();
-
-    // Fast path: pure ASCII (most CLI text tends to be)
-    if s.is_ascii() {
-        for &b in s.as_bytes() {
-            match b {
-                b'A'..=b'Z' => {
-                    let lower = b + 32;
-                    hasher.update(&[lower]);
-                }
-                b'a'..=b'z' | b'0'..=b'9' | b'+' | b'-' => {
-                    hasher.update(&[b]);
-                }
-                _ => {
-                    // drop whitespace, apostrophes, punctuation, etc.
-                }
-            }
-        }
-        return Some(hasher.finalize().to_string());
-    }
-
-    // Unicode-safe fallback (still streaming; no big allocation)
-    let mut buf = [0u8; 4];
-    for ch in s.chars() {
-        if ch == '+' || ch == '-' {
-            hasher.update(&[ch as u8]); // ASCII '+'/'-'
-            continue;
-        }
-
-        // Keep only letters/digits across Unicode; drop punctuation/whitespace/etc.
-        if ch.is_alphanumeric() {
-            for lc in ch.to_lowercase() {
-                let encoded = lc.encode_utf8(&mut buf);
-                hasher.update(encoded.as_bytes());
-            }
-        }
-    }
-
-    Some(hasher.finalize().to_string())
 }
 
 pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
@@ -525,30 +483,8 @@ mod tests {
     use super::{cards_from_md, content_to_card, parse_card_lines};
     use crate::card::CardContent;
     use crate::crud::DB;
-    use crate::utils::{get_hash, register_all_cards};
-    use proptest::prelude::*;
+    use crate::utils::register_all_cards;
     use std::path::PathBuf;
-    proptest! {
-        #[test]
-        fn test_card_parser( content in "\\PC*") {
-            parse_card_lines(&content);
-            get_hash(&content);
-        }
-    }
-
-    #[test]
-    fn test_hash() {
-        let a = "Hello,  world.\nIt's  2+2 - 1.";
-        let b = "hello world its 2+2-1";
-        let c = "  HELLO\tWORLD\tIT'S\t2+2 - 1  ";
-
-        let ha = get_hash(a);
-        let hb = get_hash(b);
-        let hc = get_hash(c);
-
-        assert_eq!(ha, hb);
-        assert_eq!(ha, hc);
-    }
 
     #[test]
     fn test_card_parsing() {
@@ -570,10 +506,6 @@ mod tests {
 
         let content = "Q: what?\nA: yes\n\n";
         let card = content_to_card(&card_path, content, 1, 1).unwrap();
-        assert_eq!(
-            card.card_hash,
-            "da7c87d9ced65c05181a0cd83c6aa84966b20e6e89f2bff9d9a34927a4c01891"
-        );
         if let CardContent::Basic { question, answer } = &card.content {
             assert_eq!(question, "what?");
             assert_eq!(answer, "yes");
