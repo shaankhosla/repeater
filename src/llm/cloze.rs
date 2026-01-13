@@ -36,7 +36,7 @@ pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<
 
     let request = CreateResponseArgs::default()
         .model(CLOZE_MODEL)
-        .max_output_tokens(500_u32)
+        .max_output_tokens(5000_u32)
         .input(vec![
             InputMessage {
                 role: InputRole::System,
