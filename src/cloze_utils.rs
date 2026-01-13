@@ -17,10 +17,11 @@ pub fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
     for (i, ch) in text.char_indices() {
         match ch {
             '[' if start.is_none() => start = Some(i),
-            ']' if start.is_some() => {
-                let s = start.take().unwrap();
-                let e = i + ch.len_utf8();
-                ranges.push((s, e));
+            ']' => {
+                if let Some(s) = start.take() {
+                    let e = i + ch.len_utf8();
+                    ranges.push((s, e));
+                }
             }
             _ => {}
         }
@@ -29,14 +30,9 @@ pub fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
-fn build_user_prompt(cards_with_no_clozes: &[(String, String)]) -> String {
-    let total_missing = cards_with_no_clozes.len();
+fn build_user_prompt(total_missing: usize, card_text: &str) -> String {
     let additional_missing = total_missing.saturating_sub(1);
     let mut user_prompt = String::new();
-    let sample_card_needing_cloze = cards_with_no_clozes
-        .first()
-        .map(|(_, text)| text.as_str())
-        .unwrap();
 
     let cyan = "\x1b[36m";
     let yellow = "\x1b[33m";
@@ -58,7 +54,7 @@ fn build_user_prompt(cards_with_no_clozes: &[(String, String)]) -> String {
         "\n\n{dim}Example needing a Cloze:{reset}\n{sample}\n",
         dim = dim,
         reset = reset,
-        sample = sample_card_needing_cloze
+        sample = card_text
     ));
 
     let other_fragment = if additional_missing > 0 {
@@ -145,6 +141,9 @@ pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
     if cards_with_no_clozes.is_empty() {
         return Ok(());
     }
+    let total_missing = cards_with_no_clozes.len();
+    let card_text = &cards_with_no_clozes[0].1;
+    let user_prompt = build_user_prompt(total_missing, card_text);
 
     let index_by_hash: HashMap<String, usize> = cards
         .iter()
@@ -152,15 +151,9 @@ pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
         .map(|(i, c)| (c.card_hash.clone(), i))
         .collect();
 
-    let user_prompt = build_user_prompt(&cards_with_no_clozes);
-
-    let plural = if cards_with_no_clozes.len() == 1 {
-        ""
-    } else {
-        "s"
-    };
+    let plural = if total_missing == 1 { "" } else { "s" };
     let client = ensure_client(&user_prompt)
-       .with_context(|| format!("Failed to initialize LLM client, cannot synthesize Cloze text for {} card{plural} in your collection", cards_with_no_clozes.len()))?;
+       .with_context(|| format!("Failed to initialize LLM client, cannot synthesize Cloze text for {} card{plural} in your collection", total_missing))?;
     let client = Arc::new(client);
 
     replace_missing_clozes(cards, cards_with_no_clozes, &index_by_hash, client).await?;
@@ -213,5 +206,22 @@ mod tests {
             masked,
             "Capital of 日本 is [______________________________]"
         );
+    }
+
+    #[test]
+    fn test_user_prompt() {
+        let card_text = "the moon revolves around the earth";
+        let user_prompt = build_user_prompt(1, card_text);
+        assert_eq!(
+            user_prompt,
+            "\n\u{1b}[36mrepeater\u{1b}[0m found \u{1b}[33m1\u{1b}[0m cloze card missing bracketed deletions.\u{1b}[0m\n\n\u{1b}[2mExample needing a Cloze:\u{1b}[0m\nthe moon revolves around the earth\n\n\u{1b}[36mrepeater\u{1b}[0m can send this text to an LLM to generate a Cloze for you.\u{1b}[0m\n"
+        );
+
+        let user_prompt = build_user_prompt(3, card_text);
+        dbg!(&user_prompt);
+        assert_eq!(
+            user_prompt,
+            "\n\u{1b}[36mrepeater\u{1b}[0m found \u{1b}[33m3\u{1b}[0m cloze cards missing bracketed deletions.\u{1b}[0m\n\n\u{1b}[2mExample needing a Cloze:\u{1b}[0m\nthe moon revolves around the earth\n\n\u{1b}[36mrepeater\u{1b}[0m can send this text along with \u{1b}[33m2\u{1b}[0m other cards to an LLM to generate a Cloze for you.\u{1b}[0m\n"
+        )
     }
 }

@@ -42,3 +42,20 @@ pub fn strip_controls_and_escapes(input: &str) -> String {
 
     out.trim().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_controls_and_escapes() {
+        let input = "\x1b[1mHello\x1b[0m";
+        let expected = "Hello";
+        assert_eq!(strip_controls_and_escapes(input), expected);
+    }
+    #[test]
+    fn test_is_markdown() {
+        assert!(is_markdown(Path::new("test.md")));
+        assert!(!is_markdown(Path::new("test.txt")));
+    }
+}
