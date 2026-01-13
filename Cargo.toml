@@ -16,7 +16,7 @@ anyhow = "1.0.100"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }
 directories = "6.0.0"
 tokio = { version = "1", features = ["rt-multi-thread","macros"]}
-blake3 = "1.8.2"
+blake3 = "1.8.3"
 chrono = "0.4.42"
 futures = "0.3.31"
 ignore = "0.4.25"
