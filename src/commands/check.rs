@@ -389,3 +389,21 @@ fn help_panel(stats: &CardStats) -> Paragraph<'static> {
         .block(Theme::panel_with_line(Theme::section_header("Controls")))
         .wrap(Wrap { trim: true })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::format_upcoming_label;
+
+    #[test]
+    fn format_upcoming_label_pretty_prints_dates() {
+        assert_eq!(format_upcoming_label("2024-12-25"), "Wed 25");
+    }
+
+    #[test]
+    fn format_upcoming_label_falls_back_to_original_input() {
+        assert_eq!(
+            format_upcoming_label("not-a-date"),
+            "not-a-date".to_string()
+        );
+    }
+}

@@ -341,6 +341,7 @@ mod tests {
 
     use super::*;
     use std::path::PathBuf;
+    use std::time::Instant;
 
     fn basic_card(question: &str, answer: &str) -> Card {
         Card {
@@ -392,9 +393,101 @@ mod tests {
         assert!(revealed.contains("[東京]"));
     }
 
+    #[test]
+    fn last_action_prints_human_friendly_intervals() {
+        fn formatted(minutes: f64, status: ReviewStatus) -> String {
+            let action = LastAction {
+                action: status,
+                show_again_duration: minutes / MINUTES_PER_DAY,
+                last_reviewed_at: Instant::now(),
+            };
+            action.print()
+        }
+
+        assert_eq!(
+            formatted(10.0, ReviewStatus::Pass),
+            " Pass (See again in <15 mins)"
+        );
+        assert_eq!(
+            formatted(20.0, ReviewStatus::Pass),
+            " Pass (See again in <30 mins)"
+        );
+        assert_eq!(
+            formatted(60.0, ReviewStatus::Pass),
+            " Pass (See again in <12 hours)"
+        );
+        assert_eq!(
+            formatted(22.0 * 60.0, ReviewStatus::Pass),
+            " Pass (See again in <1 day)"
+        );
+        assert_eq!(
+            formatted(3.0 * MINUTES_PER_DAY, ReviewStatus::Fail),
+            " Fail (See again in 3 days)"
+        );
+    }
+
+    #[test]
+    fn instructions_note_media_shortcut_before_reveal() {
+        let db = in_memory_db();
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")]);
+        state.current_medias = extract_media("[audio](clip.mp3)", None);
+
+        let lines = instructions_text(&state);
+        let line_text = flatten_line(&lines[0]);
+
+        assert!(line_text.contains("media file"));
+        assert!(line_text.contains("open"));
+    }
+
+    #[test]
+    fn instructions_show_answer_branch_includes_pass_and_fail() {
+        let db = in_memory_db();
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")]);
+        state.show_answer = true;
+
+        let lines = instructions_text(&state);
+        let commands = flatten_line(&lines[0]);
+
+        assert!(commands.contains("Pass"));
+        assert!(commands.contains("Fail"));
+    }
+
+    #[test]
+    fn recent_last_action_is_displayed_in_instructions() {
+        let db = in_memory_db();
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")]);
+        state.show_answer = true;
+        state.last_action = Some(LastAction {
+            action: ReviewStatus::Fail,
+            show_again_duration: 0.0,
+            last_reviewed_at: Instant::now(),
+        });
+
+        let lines = instructions_text(&state);
+        assert!(lines.len() >= 2);
+
+        let last_line = flatten_line(lines.last().unwrap());
+        assert!(last_line.contains("Last:"));
+        assert!(last_line.contains("Fail"));
+    }
+
     fn extract_placeholder(text: &str) -> String {
         let start = text.find('[').unwrap();
         let end = text[start..].find(']').unwrap() + start;
         text[start + 1..end].to_string()
+    }
+
+    fn flatten_line(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.to_string())
+            .collect::<String>()
+    }
+
+    fn in_memory_db() -> DB {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(DB::new_in_memory())
+            .unwrap()
     }
 }
