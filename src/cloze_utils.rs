@@ -1,0 +1,180 @@
+use crate::card::{Card, CardContent, ClozeRange};
+use crate::llm::{ensure_client, request_cloze};
+use async_openai::Client;
+use async_openai::config::OpenAIConfig;
+use futures::stream::{self, StreamExt};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+
+const MAX_CONCURRENT_LLM_REQUESTS: usize = 4;
+
+pub fn find_cloze_ranges(text: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut start = None;
+
+    for (i, ch) in text.char_indices() {
+        match ch {
+            '[' if start.is_none() => start = Some(i),
+            ']' if start.is_some() => {
+                let s = start.take().unwrap();
+                let e = i + ch.len_utf8();
+                ranges.push((s, e));
+            }
+            _ => {}
+        }
+    }
+
+    ranges
+}
+
+fn build_user_prompt(cards_with_no_clozes: &[(String, String)]) -> String {
+    let total_missing = cards_with_no_clozes.len();
+    let additional_missing = total_missing.saturating_sub(1);
+    let mut user_prompt = String::new();
+    let sample_card_needing_cloze = cards_with_no_clozes
+        .first()
+        .map(|(_, text)| text.as_str())
+        .unwrap();
+
+    let cyan = "\x1b[36m";
+    let yellow = "\x1b[33m";
+    let dim = "\x1b[2m";
+    let reset = "\x1b[0m";
+    let plural = if total_missing == 1 { "" } else { "s" };
+
+    user_prompt.push('\n');
+    user_prompt.push_str(&format!(
+        "{cyan}repeater{reset} found {yellow}{total_missing}{reset} cloze card{plural} missing bracketed deletions.{reset}",
+        cyan = cyan,
+        yellow = yellow,
+        total_missing = total_missing,
+        plural = plural,
+        reset = reset,
+    ));
+
+    user_prompt.push_str(&format!(
+        "\n\n{dim}Example needing a Cloze:{reset}\n{sample}\n",
+        dim = dim,
+        reset = reset,
+        sample = sample_card_needing_cloze
+    ));
+
+    let other_fragment = if additional_missing > 0 {
+        let other_plural = if additional_missing == 1 { "" } else { "s" };
+        format!(
+            " along with {yellow}{additional_missing}{reset} other card{other_plural}",
+            yellow = yellow,
+            additional_missing = additional_missing,
+            reset = reset,
+            other_plural = other_plural
+        )
+    } else {
+        String::new()
+    };
+
+    user_prompt.push_str(&format!(
+        "\n{cyan}repeater{reset} can send this text{other_fragment} to an LLM to generate a Cloze for you.{reset}\n",
+        cyan = cyan,
+        reset = reset,
+        other_fragment = other_fragment
+    ));
+    user_prompt
+}
+
+async fn replace_missing_clozes(
+    cards: &mut [Card],
+    cards_with_no_clozes: Vec<(String, String)>,
+    index_by_hash: &HashMap<String, usize>,
+    client: Arc<Client<OpenAIConfig>>,
+) -> Result<()> {
+    let mut tasks = stream::iter(cards_with_no_clozes.into_iter().map(|(hash, text)| {
+        let client = Arc::clone(&client);
+        async move {
+            let new_cloze_text = request_cloze(&client, &text).await.with_context(|| {
+                format!("Failed to synthesize cloze text for card:\n\n{}", text)
+            })?;
+            Ok::<_, anyhow::Error>((hash, new_cloze_text))
+        }
+    }))
+    .buffer_unordered(MAX_CONCURRENT_LLM_REQUESTS);
+    while let Some(llm_output) = tasks.next().await {
+        let (hash, new_cloze_text) = llm_output?;
+
+        let Some(&idx) = index_by_hash.get(&hash) else {
+            continue;
+        };
+        let card = &mut cards[idx];
+        if let CardContent::Cloze {
+            text, cloze_range, ..
+        } = &mut card.content
+        {
+            let cloze_idxs = find_cloze_ranges(&new_cloze_text);
+            let new_cloze_range: ClozeRange = cloze_idxs
+                .first()
+                .map(|(start, end)| ClozeRange::new(*start, *end))
+                .transpose()?
+                .ok_or_else(|| {
+                    anyhow::anyhow!("No cloze range found. LLM output: {new_cloze_text}")
+                })?;
+            *cloze_range = Some(new_cloze_range);
+            *text = new_cloze_text;
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
+    let cards_with_no_clozes: Vec<_> = cards
+        .iter()
+        .filter_map(|card| {
+            if let CardContent::Cloze {
+                text,
+                cloze_range: None,
+            } = &card.content
+            {
+                Some((card.card_hash.clone(), text.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if cards_with_no_clozes.is_empty() {
+        return Ok(());
+    }
+
+    let index_by_hash: HashMap<String, usize> = cards
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.card_hash.clone(), i))
+        .collect();
+
+    let user_prompt = build_user_prompt(&cards_with_no_clozes);
+    let plural = if cards_with_no_clozes.len() == 1 {
+        ""
+    } else {
+        "s"
+    };
+
+    let client = ensure_client(&user_prompt)
+       .with_context(|| format!("Failed to initialize LLM client, cannot synthesize Cloze text for {} card{plural} in your collection", cards_with_no_clozes.len()))?;
+    let client = Arc::new(client);
+
+    replace_missing_clozes(cards, cards_with_no_clozes, &index_by_hash, client).await?;
+
+    Ok(())
+}
+
+pub fn mask_cloze_text(text: &str, range: &ClozeRange) -> String {
+    let start = range.start;
+    let end = range.end;
+    let hidden_section = &text[start..end];
+    let core = hidden_section.trim_start_matches('[').trim_end_matches(']');
+    let placeholder = "_".repeat(core.chars().count().max(3));
+
+    let masked = format!("{}[{}]{}", &text[..start], placeholder, &text[end..]);
+    masked
+}

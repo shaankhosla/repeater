@@ -1,9 +1,9 @@
 use crate::{
     check_version::{check_version, prompt_for_new_version},
     crud::DB,
+    parser::register_all_cards,
     stats::{CardLifeCycle, CardStats, Histogram},
     tui::Theme,
-    utils::register_all_cards,
 };
 
 use std::{

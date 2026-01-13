@@ -1,9 +1,10 @@
 use crate::{
     card::CardType,
     crud::DB,
+    parser::{cards_from_md, content_to_card},
     tui::Editor,
     tui::Theme,
-    utils::{cards_from_md, content_to_card, is_markdown},
+    utils::is_markdown,
 };
 
 use std::{

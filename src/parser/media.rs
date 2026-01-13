@@ -125,7 +125,7 @@ pub fn extract_media(markdown: &str, base_dir: Option<&Path>) -> Vec<Media> {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::media::{Media, MediaKind};
+    use crate::parser::{Media, MediaKind};
 
     use super::extract_media;
 

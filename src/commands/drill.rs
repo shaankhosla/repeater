@@ -2,13 +2,14 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::card::{Card, CardContent, ClozeRange};
+use crate::card::{Card, CardContent};
+use crate::cloze_utils::{mask_cloze_text, resolve_missing_clozes};
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
-use crate::markdown::render_markdown;
-use crate::media::{Media, extract_media};
+use crate::parser::register_all_cards;
+use crate::parser::render_markdown;
+use crate::parser::{Media, extract_media};
 use crate::tui::Theme;
-use crate::utils::{register_all_cards, resolve_missing_clozes};
 
 use anyhow::{Context, Result};
 use crossterm::event::KeyModifiers;
@@ -334,20 +335,10 @@ fn format_card_text(card: &Card, show_answer: bool) -> String {
     }
 }
 
-fn mask_cloze_text(text: &str, range: &ClozeRange) -> String {
-    let start = range.start;
-    let end = range.end;
-    let hidden_section = &text[start..end];
-    let core = hidden_section.trim_start_matches('[').trim_end_matches(']');
-    let placeholder = "_".repeat(core.chars().count().max(3));
-
-    let masked = format!("{}[{}]{}", &text[..start], placeholder, &text[end..]);
-    masked
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::utils::find_cloze_ranges;
+    use crate::card::ClozeRange;
+    use crate::cloze_utils::find_cloze_ranges;
 
     use super::*;
     use std::path::PathBuf;
