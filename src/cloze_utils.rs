@@ -1,5 +1,6 @@
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::llm::{ensure_client, request_cloze};
+use crate::palette::Palette;
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 use futures::stream::{self, StreamExt};
@@ -34,36 +35,27 @@ fn build_user_prompt(total_missing: usize, card_text: &str) -> String {
     let additional_missing = total_missing.saturating_sub(1);
     let mut user_prompt = String::new();
 
-    let cyan = "\x1b[36m";
-    let yellow = "\x1b[33m";
-    let dim = "\x1b[2m";
-    let reset = "\x1b[0m";
     let plural = if total_missing == 1 { "" } else { "s" };
 
     user_prompt.push('\n');
     user_prompt.push_str(&format!(
-        "{cyan}repeater{reset} found {yellow}{total_missing}{reset} cloze card{plural} missing bracketed deletions.{reset}",
-        cyan = cyan,
-        yellow = yellow,
-        total_missing = total_missing,
+        "{} found {} cloze card{plural} missing bracketed deletions.",
+        Palette::paint(Palette::INFO, "repeater"),
+        Palette::paint(Palette::WARNING, total_missing),
         plural = plural,
-        reset = reset,
     ));
 
     user_prompt.push_str(&format!(
-        "\n\n{dim}Example needing a Cloze:{reset}\n{sample}\n",
-        dim = dim,
-        reset = reset,
+        "\n\n{}\n{sample}\n",
+        Palette::dim("Example needing a Cloze:"),
         sample = card_text
     ));
 
     let other_fragment = if additional_missing > 0 {
         let other_plural = if additional_missing == 1 { "" } else { "s" };
         format!(
-            " along with {yellow}{additional_missing}{reset} other card{other_plural}",
-            yellow = yellow,
-            additional_missing = additional_missing,
-            reset = reset,
+            " along with {} other card{other_plural}",
+            Palette::paint(Palette::WARNING, additional_missing),
             other_plural = other_plural
         )
     } else {
@@ -71,9 +63,8 @@ fn build_user_prompt(total_missing: usize, card_text: &str) -> String {
     };
 
     user_prompt.push_str(&format!(
-        "\n{cyan}repeater{reset} can send this text{other_fragment} to an LLM to generate a Cloze for you.{reset}\n",
-        cyan = cyan,
-        reset = reset,
+        "\n{} can send this text{other_fragment} to an LLM to generate a Cloze for you.\n",
+        Palette::paint(Palette::INFO, "repeater"),
         other_fragment = other_fragment
     ));
     user_prompt

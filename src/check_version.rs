@@ -1,4 +1,4 @@
-use crate::crud::DB;
+use crate::{crud::DB, palette::Palette};
 
 use std::{
     io::{self, Write},
@@ -88,24 +88,26 @@ async fn get_latest() -> Result<Release> {
 
 pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification) {
     db.update_last_prompted_at().await.ok();
-    let dim = "\x1b[2m";
-    let reset = "\x1b[0m";
-    let cyan = "\x1b[36m";
-    let red = "\x1b[31m";
-    let green = "\x1b[32m";
-    let blue = "\x1b[34m";
 
     println!(
-        "\nA new version of {cyan}repeater{reset} is available! \
-         {red}{}{reset} -> {green}{}{reset}",
-        notification.current_version, notification.latest_version
+        "\nA new version of {} is available! {} -> {}",
+        Palette::paint(Palette::INFO, "repeater"),
+        Palette::paint(Palette::DANGER, &notification.current_version),
+        Palette::paint(Palette::SUCCESS, &notification.latest_version)
     );
 
     println!(
-        "Check {blue}https://github.com/shaankhosla/repeater/releases{reset} for more details"
+        "Check {} for more details",
+        Palette::paint(
+            Palette::ACCENT,
+            "https://github.com/shaankhosla/repeater/releases"
+        )
     );
 
-    println!("{dim}Press any key to dismiss (I'll remind you again in a few days){reset}");
+    println!(
+        "{}",
+        Palette::dim("Press any key to dismiss (I'll remind you again in a few days)")
+    );
     let _ = io::stdout().flush();
 
     let mut input = String::new();

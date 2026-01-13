@@ -6,6 +6,7 @@ pub mod crud;
 pub mod fsrs;
 pub mod import;
 pub mod llm;
+pub mod palette;
 pub mod parser;
 pub mod stats;
 pub mod tui;

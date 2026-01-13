@@ -1,6 +1,6 @@
 use std::env;
 
-use crate::utils::strip_controls_and_escapes;
+use crate::{palette::Palette, utils::strip_controls_and_escapes};
 use anyhow::{Context, Result, bail};
 
 use rpassword::read_password;
@@ -37,20 +37,14 @@ pub fn clear_api_key() -> Result<bool> {
 }
 
 pub fn prompt_for_api_key(prompt: &str) -> Result<String> {
-    let dim = "\x1b[2m";
-    let reset = "\x1b[0m";
-    let green = "\x1b[32m";
-
     println!("\n{}", prompt);
     println!(
-        "{green}Enter your OpenAI API key{reset} (https://platform.openai.com/account/api-keys) to enable the LLM helper. It's stored locally for future use.",
-        green = green,
-        reset = reset
+        "{} (https://platform.openai.com/account/api-keys) to enable the LLM helper. It's stored locally for future use.",
+        Palette::paint(Palette::SUCCESS, "Enter your OpenAI API key")
     );
     println!(
-        "{dim}This feature is optional, leave the field blank to skip.{reset}",
-        dim = dim,
-        reset = reset
+        "{}",
+        Palette::dim("This feature is optional, leave the field blank to skip.")
     );
 
     let mut input = read_password().context("Failed to read API key")?;

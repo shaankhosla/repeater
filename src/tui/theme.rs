@@ -1,3 +1,5 @@
+use crate::palette::Palette;
+
 use ratatui::{
     layout::Alignment,
     style::{Color, Modifier, Style},
@@ -10,10 +12,6 @@ pub struct Theme;
 
 impl Theme {
     pub const KEY_FG: Color = Color::Rgb(255, 255, 255);
-    pub const ACCENT: Color = Color::Blue;
-    pub const BORDER: Color = Color::Gray;
-    pub const WARNING: Color = Color::Yellow;
-    pub const SUCCESS: Color = Color::Green;
 
     pub fn default_style() -> Style {
         Style::default()
@@ -21,19 +19,19 @@ impl Theme {
 
     pub fn label() -> Style {
         Style::default()
-            .fg(Self::ACCENT)
+            .fg(Palette::ACCENT.tui())
             .add_modifier(Modifier::BOLD)
     }
 
     pub fn success() -> Style {
         Style::default()
-            .fg(Self::SUCCESS)
+            .fg(Palette::SUCCESS.tui())
             .add_modifier(Modifier::BOLD)
     }
 
     pub fn danger() -> Style {
         Style::default()
-            .fg(Self::WARNING)
+            .fg(Palette::WARNING.tui())
             .add_modifier(Modifier::BOLD)
     }
 
@@ -53,7 +51,7 @@ impl Theme {
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(Self::BORDER))
+            .border_style(Style::default().fg(Palette::BORDER.tui()))
             .title(title)
             .title_alignment(Alignment::Left)
     }
@@ -78,7 +76,7 @@ impl Theme {
             format!(" {} ", text.into()),
             Style::default()
                 .fg(Self::KEY_FG)
-                .bg(Self::ACCENT)
+                .bg(Palette::ACCENT.tui())
                 .add_modifier(Modifier::BOLD),
         )
     }
