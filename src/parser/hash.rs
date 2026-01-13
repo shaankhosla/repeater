@@ -46,7 +46,7 @@ pub fn get_hash(s: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::hash::get_hash;
+    use crate::parser::get_hash;
     use proptest::prelude::*;
     proptest! {
         #[test]

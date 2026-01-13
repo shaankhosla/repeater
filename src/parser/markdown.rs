@@ -271,4 +271,20 @@ mod tests {
             render_markdown(&content);
         }
     }
+    #[test]
+    fn renders_heading_and_paragraph() {
+        let text = render_markdown("# Title\n\nBody");
+
+        // Expect:
+        // Line 0: "Title"
+        // Line 1: blank
+        // Line 2: "Body"
+        // Line 3: blank
+        assert_eq!(text.lines.len(), 4);
+
+        assert_eq!(text.lines[0].spans[0].content, "Title");
+        assert!(text.lines[1].spans.is_empty());
+        assert_eq!(text.lines[2].spans[0].content, "Body");
+        assert!(text.lines[3].spans.is_empty());
+    }
 }

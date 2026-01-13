@@ -1,7 +1,7 @@
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 use open::that;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct Media {
 impl Media {
     pub fn play(&self) -> Result<()> {
         if !self.path.is_file() || !self.path.exists() {
-            return Err(anyhow!("File does not exist: {}", self.path.display()));
+            bail!("File does not exist: {}", self.path.display());
         }
         that(&self.path)?;
         Ok(())
@@ -125,7 +125,7 @@ pub fn extract_media(markdown: &str, base_dir: Option<&Path>) -> Vec<Media> {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use crate::media::{Media, MediaKind};
+    use crate::parser::{Media, MediaKind};
 
     use super::extract_media;
 

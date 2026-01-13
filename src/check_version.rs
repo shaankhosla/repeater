@@ -113,5 +113,16 @@ pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification)
 }
 
 fn normalize_version(version: &str) -> String {
-    version.trim().trim_start_matches('v').to_string()
+    version.trim().trim_start_matches(['v', 'V']).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_version() {
+        assert_eq!(normalize_version("v1.0.0"), "1.0.0");
+        assert_eq!(normalize_version("1.0.0"), "1.0.0");
+    }
 }
