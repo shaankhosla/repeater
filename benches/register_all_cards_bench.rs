@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use repeater::crud::DB;
-use repeater::utils::register_all_cards;
+use repeater::parser::register_all_cards;
 use std::hint::black_box;
 use tokio::runtime::Runtime;
 

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 use zip::ZipArchive;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 
 use crate::crud::DB;
 
@@ -53,13 +53,13 @@ pub async fn run(_db: &DB, anki_path: &Path, export_path: &Path) -> Result<()> {
 
 fn validate_path(anki_path: &Path) -> Result<()> {
     if !anki_path.exists() {
-        return Err(anyhow!("Anki path does not exist: {}", anki_path.display()));
+        bail!("Anki path does not exist: {}", anki_path.display());
     }
     if !anki_path.is_file() || anki_path.extension() != Some("apkg".as_ref()) {
-        return Err(anyhow!(
+        bail!(
             "Anki path does not point to an apkg file: {}",
             anki_path.display()
-        ));
+        );
     }
     Ok(())
 }

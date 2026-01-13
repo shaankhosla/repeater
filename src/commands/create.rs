@@ -1,9 +1,10 @@
 use crate::{
     card::CardType,
     crud::DB,
+    parser::{cards_from_md, content_to_card},
     tui::Editor,
     tui::Theme,
-    utils::{cards_from_md, content_to_card, is_markdown},
+    utils::is_markdown,
 };
 
 use std::{
@@ -14,7 +15,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, bail};
 use crossterm::{
     event::{
         self, Event, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
@@ -35,10 +36,7 @@ const FLASH_SECS: f64 = 1.5;
 
 pub async fn run(db: &DB, card_path: PathBuf) -> Result<()> {
     if !is_markdown(&card_path) {
-        return Err(anyhow!(
-            "Card path must be a markdown file: {}",
-            card_path.display()
-        ));
+        bail!("Card path must be a markdown file: {}", card_path.display());
     }
 
     let file_exists = card_path.is_file();
@@ -71,7 +69,7 @@ async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result
     let card = content_to_card(path, contents, start_idx, end_idx).context("Invalid card")?;
     let card_exists = db.card_exists(&card).await?;
     if card_exists {
-        return Err(anyhow!("This card already exists in the database."));
+        bail!("This card already exists in the database.");
     }
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()

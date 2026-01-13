@@ -246,8 +246,8 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::fsrs::{Performance, ReviewStatus};
+    use crate::parser::content_to_card;
     use crate::stats::CardLifeCycle;
-    use crate::utils::content_to_card;
 
     use super::DB;
 

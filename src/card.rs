@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, bail};
 
 #[derive(Clone, Debug)]
 pub struct Card {
@@ -32,13 +32,11 @@ pub struct ClozeRange {
 impl ClozeRange {
     pub fn new(start: usize, end: usize) -> Result<Self> {
         if start >= end {
-            return Err(anyhow!("Invalid cloze range: start must be < end"));
+            bail!("Invalid cloze range: start must be < end");
         }
 
         if end - start <= 2 {
-            return Err(anyhow!(
-                "Invalid cloze range: range must be at least length 1"
-            ));
+            bail!("Invalid cloze range: range must be at least length 1");
         }
 
         Ok(Self { start, end })

@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueHint};
 
+use repeater::commands::{check, create, drill};
 use repeater::crud::DB;
-use repeater::{check, create, drill, import, llm};
+use repeater::{import, llm};
 
 #[derive(Parser, Debug)]
 #[command(

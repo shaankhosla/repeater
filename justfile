@@ -2,7 +2,7 @@ precommit:
     SQLX_OFFLINE=true cargo fmt --all -- --check
     SQLX_OFFLINE=true cargo clippy --fix --allow-dirty --allow-staged
     SQLX_OFFLINE=true cargo machete
-    SQLX_OFFLINE=true cargo test
+    SQLX_OFFLINE=true cargo llvm-cov --all-features --workspace
 
 delete_db:
     -rm "/Users/shaankhosla/Library/Application Support/repeater/cards.db"
