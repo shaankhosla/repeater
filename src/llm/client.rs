@@ -1,5 +1,6 @@
 use crate::llm::secrets::API_KEY_ENV;
 use anyhow::{Context, Result, anyhow, bail};
+
 use async_openai::{Client, config::OpenAIConfig};
 
 use super::secrets::{ApiKeySource, get_api_key_from_sources, prompt_for_api_key, store_api_key};

@@ -1,10 +1,14 @@
-use anyhow::{Result, anyhow};
-use async_openai::types::{
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-    CreateChatCompletionRequestArgs,
+use anyhow::{Result, bail};
+use async_openai::{
+    Client,
+    config::OpenAIConfig,
+    types::responses::{
+        CreateResponseArgs, InputMessage, InputRole, OutputItem, OutputMessageContent,
+    },
 };
-use async_openai::{Client, config::OpenAIConfig};
+
 const CLOZE_MODEL: &str = "gpt-5-nano";
+
 const SYSTEM_PROMPT: &str = r#"
 You convert flashcards into Cloze deletions.
 A Cloze deletion is denoted by square brackets: [hidden text].
@@ -28,30 +32,36 @@ This is the text you should generate the Cloze deletion for:
 "#;
 
 pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<String> {
-    let prompt = format!("{USER_PROMPT_HEADER}{text}");
+    let user_prompt = format!("{USER_PROMPT_HEADER}{text}");
 
-    let request = CreateChatCompletionRequestArgs::default()
+    let request = CreateResponseArgs::default()
         .model(CLOZE_MODEL)
-        .max_completion_tokens(5000_u32)
-        .messages([
-            ChatCompletionRequestSystemMessageArgs::default()
-                .content(SYSTEM_PROMPT)
-                .build()?
-                .into(),
-            ChatCompletionRequestUserMessageArgs::default()
-                .content(prompt)
-                .build()?
-                .into(),
+        .max_output_tokens(500_u32)
+        .input(vec![
+            InputMessage {
+                role: InputRole::System,
+                content: vec![SYSTEM_PROMPT.into()],
+                status: None,
+            },
+            InputMessage {
+                role: InputRole::User,
+                content: vec![user_prompt.into()],
+                status: None,
+            },
         ])
         .build()?;
 
-    let response = client.chat().create(request).await?;
+    let response = client.responses().create(request).await?;
 
-    let output = response
-        .choices
-        .first()
-        .and_then(|c| c.message.content.clone())
-        .ok_or_else(|| anyhow!("No content returned from model"))?;
+    for item in response.output {
+        if let OutputItem::Message(message) = item {
+            for content in message.content {
+                if let OutputMessageContent::OutputText(text) = content {
+                    return Ok(text.text);
+                }
+            }
+        }
+    }
 
-    Ok(output)
+    bail!("No text output returned from model")
 }
