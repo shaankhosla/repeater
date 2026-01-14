@@ -17,10 +17,11 @@ fn bench_register_all_cards(c: &mut Criterion) {
             let db = Arc::clone(&db);
             let paths = paths.clone();
             async move {
-                let cards = register_all_cards(db.as_ref(), paths)
+                let (cards, stats) = register_all_cards(db.as_ref(), paths)
                     .await
                     .expect("failed to register cards");
                 black_box(cards);
+                black_box(stats);
             }
         });
     });

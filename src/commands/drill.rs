@@ -38,7 +38,7 @@ pub async fn run(
     card_limit: Option<usize>,
     new_card_limit: Option<usize>,
 ) -> Result<()> {
-    let hash_cards = register_all_cards(db, paths).await?;
+    let (hash_cards, _) = register_all_cards(db, paths).await?;
     let mut cards_due_today = db
         .due_today(&hash_cards, card_limit, new_card_limit)
         .await?;

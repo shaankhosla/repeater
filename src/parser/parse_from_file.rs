@@ -1,13 +1,12 @@
 use crate::cloze_utils::find_cloze_ranges;
 use ignore::WalkBuilder;
-use ignore::types::TypesBuilder;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::parser::get_hash;
-use crate::utils::trim_line;
+use crate::utils::{is_markdown, trim_line};
 use ignore::WalkState;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -16,6 +15,12 @@ use tokio::sync::mpsc;
 use crate::crud::DB;
 
 use anyhow::{Result, anyhow, bail};
+
+#[derive(Default, Clone, Debug)]
+pub struct FileSearchStats {
+    pub files_searched: usize,
+    pub markdown_files: usize,
+}
 
 fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<String>) {
     #[derive(Copy, Clone)]
@@ -217,26 +222,40 @@ fn markdown_walk_builder(paths: &[PathBuf]) -> Result<Option<WalkBuilder>> {
         builder.add(path);
     }
     builder.hidden(false).git_ignore(true).git_exclude(true);
-    let mut types = TypesBuilder::new();
-    types.add("markdown", "*.md")?;
-    types.select("markdown");
-    builder.types(types.build()?);
     Ok(Some(builder))
 }
 
-fn run_card_walker(paths: Vec<PathBuf>, sender: mpsc::UnboundedSender<Vec<Card>>) -> Result<()> {
+fn run_card_walker(
+    paths: Vec<PathBuf>,
+    sender: mpsc::UnboundedSender<Vec<Card>>,
+) -> Result<FileSearchStats> {
     let Some(builder) = markdown_walk_builder(&paths)? else {
-        return Ok(());
+        return Ok(FileSearchStats::default());
     };
 
     let error_slot = Arc::new(Mutex::new(None));
+    let stats = Arc::new(Mutex::new(FileSearchStats::default()));
 
     builder.build_parallel().run(|| {
         let sender = sender.clone();
         let error_slot = Arc::clone(&error_slot);
+        let stats = Arc::clone(&stats);
         Box::new(move |entry| match entry {
             Ok(entry) => {
                 if !entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    return WalkState::Continue;
+                }
+
+                let mut stats_guard = stats.lock().unwrap();
+                stats_guard.files_searched += 1;
+                let path = entry.path();
+                let is_markdown = is_markdown(path);
+                if is_markdown {
+                    stats_guard.markdown_files += 1;
+                }
+                drop(stats_guard);
+
+                if !is_markdown {
                     return WalkState::Continue;
                 }
                 let path = entry.path().to_path_buf();
@@ -269,10 +288,17 @@ fn run_card_walker(paths: Vec<PathBuf>, sender: mpsc::UnboundedSender<Vec<Card>>
     if let Some(err) = error_slot.lock().unwrap().take() {
         return Err(err);
     }
-    Ok(())
+    let stats = match Arc::try_unwrap(stats) {
+        Ok(mutex) => mutex.into_inner().unwrap(),
+        Err(arc) => arc.lock().unwrap().clone(),
+    };
+    Ok(stats)
 }
 
-pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<String, Card>> {
+pub async fn register_all_cards(
+    db: &DB,
+    paths: Vec<PathBuf>,
+) -> Result<(HashMap<String, Card>, FileSearchStats)> {
     let (tx, mut rx) = mpsc::unbounded_channel::<Vec<Card>>();
     let walker_handle = tokio::task::spawn_blocking(move || run_card_walker(paths, tx));
 
@@ -287,9 +313,9 @@ pub async fn register_all_cards(db: &DB, paths: Vec<PathBuf>) -> Result<HashMap<
         }
     }
 
-    walker_handle.await??;
+    let stats = walker_handle.await??;
 
-    Ok(hash_cards)
+    Ok((hash_cards, stats))
 }
 
 #[cfg(test)]
@@ -361,17 +387,20 @@ mod tests {
             .await
             .expect("Failed to connect to or initialize database");
         let dir_path = PathBuf::from("test_data");
-        let cards = register_all_cards(&db, vec![dir_path]).await.unwrap();
+        let (cards, stats) = register_all_cards(&db, vec![dir_path]).await.unwrap();
         assert_eq!(cards.len(), 11);
         for card in cards.values() {
             assert!(card.file_path.to_string_lossy().contains("test_data"));
         }
+        assert_eq!(stats.markdown_files, 2);
+        assert_eq!(stats.files_searched, 3);
 
         let dir_path = PathBuf::from("test_data/");
         let file_path = PathBuf::from("test_data/test.md");
-        let cards = register_all_cards(&db, vec![dir_path, file_path])
+        let (cards, _) = register_all_cards(&db, vec![dir_path, file_path])
             .await
             .unwrap();
+
         assert_eq!(cards.len(), 11);
     }
 

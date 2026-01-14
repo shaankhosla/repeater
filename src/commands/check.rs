@@ -1,7 +1,7 @@
 use crate::{
     check_version::{check_version, prompt_for_new_version},
     crud::DB,
-    parser::register_all_cards,
+    parser::{FileSearchStats, register_all_cards},
     stats::{CardLifeCycle, CardStats, Histogram},
     tui::Theme,
 };
@@ -31,18 +31,18 @@ use ratatui::{
 pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
     let version_check = tokio::spawn(check_version(db.clone()));
 
-    let card_hashes = register_all_cards(db, paths).await?;
+    let (card_hashes, file_traversal_stats) = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
-    let stats = db.collection_stats(&card_hashes).await?;
+    let crud_stats = db.collection_stats(&card_hashes).await?;
     if let Some(notification) = version_check.await.ok().flatten() {
         prompt_for_new_version(db, &notification).await;
     }
 
-    render_dashboard(&stats)?;
+    render_dashboard(&crud_stats, &file_traversal_stats)?;
     Ok(count)
 }
 
-fn render_dashboard(stats: &CardStats) -> Result<()> {
+fn render_dashboard(crud_stats: &CardStats, file_traversal_stats: &FileSearchStats) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -50,7 +50,7 @@ fn render_dashboard(stats: &CardStats) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.hide_cursor()?;
 
-    let draw_result = dashboard_loop(&mut terminal, stats);
+    let draw_result = dashboard_loop(&mut terminal, crud_stats, file_traversal_stats);
 
     terminal.show_cursor()?;
     disable_raw_mode()?;
@@ -61,10 +61,11 @@ fn render_dashboard(stats: &CardStats) -> Result<()> {
 
 fn dashboard_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-    stats: &CardStats,
+    crud_stats: &CardStats,
+    file_traversal_stats: &FileSearchStats,
 ) -> Result<()> {
     loop {
-        terminal.draw(|frame| draw_dashboard(frame, stats))?;
+        terminal.draw(|frame| draw_dashboard(frame, crud_stats, file_traversal_stats))?;
 
         if event::poll(Duration::from_millis(200))?
             && let Event::Key(key) = event::read()?
@@ -82,7 +83,11 @@ fn dashboard_loop(
     Ok(())
 }
 
-fn draw_dashboard(frame: &mut Frame<'_>, stats: &CardStats) {
+fn draw_dashboard(
+    frame: &mut Frame<'_>,
+    crud_stats: &CardStats,
+    file_traversal_stats: &FileSearchStats,
+) {
     let area = frame.area();
     frame.render_widget(Theme::backdrop(), area);
 
@@ -100,41 +105,50 @@ fn draw_dashboard(frame: &mut Frame<'_>, stats: &CardStats) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(rows[0]);
 
-    frame.render_widget(collection_panel(stats), summary[0]);
-    frame.render_widget(due_panel(stats), summary[1]);
+    frame.render_widget(
+        collection_panel(crud_stats, file_traversal_stats),
+        summary[0],
+    );
+    frame.render_widget(due_panel(crud_stats), summary[1]);
 
     let mid = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
         .split(rows[1]);
 
-    render_upcoming_histogram(frame, mid[0], stats);
+    render_upcoming_histogram(frame, mid[0], crud_stats);
 
-    render_fsrs_panel(frame, mid[1], stats);
+    render_fsrs_panel(frame, mid[1], crud_stats);
 
-    frame.render_widget(help_panel(stats), rows[2]);
+    frame.render_widget(help_panel(crud_stats), rows[2]);
 }
 
-fn collection_panel(stats: &CardStats) -> Paragraph<'static> {
+fn collection_panel(
+    crud_stats: &CardStats,
+    file_traversal_stats: &FileSearchStats,
+) -> Paragraph<'static> {
     let lines = vec![
         Line::from(vec![
             Theme::span("Tracked cards"),
             Theme::bullet(),
-            Theme::label_span(format!("{}", stats.num_cards)),
+            Theme::label_span(format!("{}", crud_stats.num_cards)),
         ]),
         Line::from(vec![
             Theme::span("New"),
             Theme::bullet(),
             Theme::label_span(format!(
                 "{}",
-                *stats.card_lifecycles.get(&CardLifeCycle::New).unwrap_or(&0)
+                *crud_stats
+                    .card_lifecycles
+                    .get(&CardLifeCycle::New)
+                    .unwrap_or(&0)
             )),
             Theme::bullet(),
             Theme::span("Young"),
             Theme::bullet(),
             Theme::label_span(format!(
                 "{}",
-                *stats
+                *crud_stats
                     .card_lifecycles
                     .get(&CardLifeCycle::Young)
                     .unwrap_or(&0)
@@ -144,21 +158,29 @@ fn collection_panel(stats: &CardStats) -> Paragraph<'static> {
             Theme::bullet(),
             Theme::label_span(format!(
                 "{}",
-                *stats
+                *crud_stats
                     .card_lifecycles
                     .get(&CardLifeCycle::Mature)
                     .unwrap_or(&0)
             )),
         ]),
         Line::from(vec![
-            Theme::span("Files in Collection"),
+            Theme::span("Files With Cards"),
             Theme::bullet(),
-            Theme::label_span(format!("{}", stats.file_paths.len())),
+            Theme::label_span(format!("{}", crud_stats.file_paths.len())),
+            Theme::bullet(),
+            Theme::span("Markdown Files"),
+            Theme::bullet(),
+            Theme::label_span(format!("{}", file_traversal_stats.markdown_files)),
+            Theme::bullet(),
+            Theme::span("Files Searched"),
+            Theme::bullet(),
+            Theme::label_span(format!("{}", file_traversal_stats.files_searched)),
         ]),
         Line::from(vec![
             Theme::span("Total Cards Indexed in DB"),
             Theme::bullet(),
-            Theme::label_span(format!("{}", stats.total_cards_in_db)),
+            Theme::label_span(format!("{}", crud_stats.total_cards_in_db)),
         ]),
     ];
     Paragraph::new(lines).block(Theme::panel("Collection"))
