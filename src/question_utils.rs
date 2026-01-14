@@ -11,6 +11,22 @@ use futures::stream::{self, StreamExt};
 
 const MAX_CONCURRENT_LLM_REQUESTS: usize = 4;
 
+pub fn rephrase_user_prompt(cards: &[Card]) -> Option<String> {
+    let mut count = 0usize;
+    let mut sample_question: Option<String> = None;
+
+    for card in cards {
+        if let CardContent::Basic { question, .. } = &card.content {
+            count += 1;
+            if sample_question.is_none() {
+                sample_question = Some(question.clone());
+            }
+        }
+    }
+
+    sample_question.map(|sample| build_user_prompt(count, &sample))
+}
+
 fn build_user_prompt(total: usize, sample_question: &str) -> String {
     let plural = if total == 1 { "" } else { "s" };
     format!(
@@ -61,7 +77,10 @@ async fn replace_questions(
     Ok(())
 }
 
-pub async fn rephrase_basic_questions(cards: &mut [Card]) -> Result<()> {
+pub async fn rephrase_basic_questions_with_client(
+    cards: &mut [Card],
+    client: Arc<Client<OpenAIConfig>>,
+) -> Result<()> {
     let cards_to_rephrase: Vec<_> = cards
         .iter()
         .filter_map(|card| {
@@ -77,17 +96,24 @@ pub async fn rephrase_basic_questions(cards: &mut [Card]) -> Result<()> {
         return Ok(());
     }
 
-    let user_prompt = build_user_prompt(cards_to_rephrase.len(), &cards_to_rephrase[0].1);
     let index_by_hash: HashMap<_, _> = cards
         .iter()
         .enumerate()
         .map(|(idx, card)| (card.card_hash.clone(), idx))
         .collect();
 
+    replace_questions(cards, cards_to_rephrase, &index_by_hash, client).await?;
+    Ok(())
+}
+
+pub async fn rephrase_basic_questions(cards: &mut [Card]) -> Result<()> {
+    let Some(user_prompt) = rephrase_user_prompt(cards) else {
+        return Ok(());
+    };
+
     let client = ensure_client(&user_prompt)
         .with_context(|| "Failed to initialize LLM client, cannot rephrase questions")?;
     let client = Arc::new(client);
 
-    replace_questions(cards, cards_to_rephrase, &index_by_hash, client).await?;
-    Ok(())
+    rephrase_basic_questions_with_client(cards, client).await
 }

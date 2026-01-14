@@ -70,6 +70,26 @@ fn build_user_prompt(total_missing: usize, card_text: &str) -> String {
     user_prompt
 }
 
+pub fn cloze_user_prompt(cards: &[Card]) -> Option<String> {
+    let mut total_missing = 0usize;
+    let mut sample_text: Option<String> = None;
+
+    for card in cards {
+        if let CardContent::Cloze {
+            text,
+            cloze_range: None,
+        } = &card.content
+        {
+            total_missing += 1;
+            if sample_text.is_none() {
+                sample_text = Some(text.clone());
+            }
+        }
+    }
+
+    sample_text.map(|text| build_user_prompt(total_missing, &text))
+}
+
 async fn replace_missing_clozes(
     cards: &mut [Card],
     cards_with_no_clozes: Vec<(String, String)>,
@@ -113,7 +133,10 @@ async fn replace_missing_clozes(
     Ok(())
 }
 
-pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
+pub async fn resolve_missing_clozes_with_client(
+    cards: &mut [Card],
+    client: Arc<Client<OpenAIConfig>>,
+) -> Result<()> {
     let cards_with_no_clozes: Vec<_> = cards
         .iter()
         .filter_map(|card| {
@@ -132,9 +155,6 @@ pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
     if cards_with_no_clozes.is_empty() {
         return Ok(());
     }
-    let total_missing = cards_with_no_clozes.len();
-    let card_text = &cards_with_no_clozes[0].1;
-    let user_prompt = build_user_prompt(total_missing, card_text);
 
     let index_by_hash: HashMap<String, usize> = cards
         .iter()
@@ -142,14 +162,33 @@ pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
         .map(|(i, c)| (c.card_hash.clone(), i))
         .collect();
 
+    replace_missing_clozes(cards, cards_with_no_clozes, &index_by_hash, client).await?;
+
+    Ok(())
+}
+
+pub async fn resolve_missing_clozes(cards: &mut [Card]) -> Result<()> {
+    let Some(user_prompt) = cloze_user_prompt(cards) else {
+        return Ok(());
+    };
+    let total_missing = cards
+        .iter()
+        .filter(|card| {
+            matches!(
+                card.content,
+                CardContent::Cloze {
+                    cloze_range: None,
+                    ..
+                }
+            )
+        })
+        .count();
     let plural = if total_missing == 1 { "" } else { "s" };
     let client = ensure_client(&user_prompt)
        .with_context(|| format!("Failed to initialize LLM client, cannot synthesize Cloze text for {} card{plural} in your collection", total_missing))?;
     let client = Arc::new(client);
 
-    replace_missing_clozes(cards, cards_with_no_clozes, &index_by_hash, client).await?;
-
-    Ok(())
+    resolve_missing_clozes_with_client(cards, client).await
 }
 
 pub fn mask_cloze_text(text: &str, range: &ClozeRange) -> String {
