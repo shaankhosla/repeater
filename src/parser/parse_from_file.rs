@@ -139,12 +139,13 @@ pub fn content_to_card(
             question: q,
             answer: a,
         };
-        Ok(Card {
-            file_path: card_path.to_path_buf(),
-            file_card_range: (file_start_idx, file_end_idx),
+
+        Ok(Card::new(
+            card_path.to_path_buf(),
+            (file_start_idx, file_end_idx),
             content,
             card_hash,
-        })
+        ))
     } else if let Some(c) = cloze {
         let cloze_idxs = find_cloze_ranges(&c);
         let cloze_range: Option<ClozeRange> = cloze_idxs
@@ -156,12 +157,12 @@ pub fn content_to_card(
             text: c,
             cloze_range,
         };
-        Ok(Card {
-            file_path: card_path.to_path_buf(),
-            file_card_range: (file_start_idx, file_end_idx),
+        Ok(Card::new(
+            card_path.to_path_buf(),
+            (file_start_idx, file_end_idx),
             content,
             card_hash,
-        })
+        ))
     } else {
         bail!("Unable to parse anything from card contents:\n{}", contents);
     }

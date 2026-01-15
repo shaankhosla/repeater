@@ -19,6 +19,14 @@ use futures::stream::{self, StreamExt};
 const MAX_CONCURRENT_LLM_REQUESTS: usize = 4;
 
 #[derive(Clone, Debug)]
+pub enum AIStatus {
+    ClozeNeedDeletion,
+    QuestionNeedRephrasing,
+    NoNeed,
+    AiEnhanced,
+}
+
+#[derive(Clone, Debug)]
 pub struct DrillPreprocessor {
     client: Option<Arc<Client<OpenAIConfig>>>,
     rephrase_questions: bool,
@@ -76,6 +84,17 @@ impl DrillPreprocessor {
 
     pub fn llm_required(&self) -> bool {
         self.client.is_some()
+    }
+    pub fn initialize_card_status(&self, cards: &mut [Card]) {
+        for card in cards {
+            if does_card_need_cloze(card) {
+                card.ai_status = AIStatus::ClozeNeedDeletion;
+            }
+
+            if does_card_need_rephrase(card, self.rephrase_questions) {
+                card.ai_status = AIStatus::QuestionNeedRephrasing;
+            }
+        }
     }
 
     pub async fn preprocess_cards(&self, cards: &mut [Card]) -> Result<()> {
@@ -238,16 +257,18 @@ pub async fn resolve_missing_clozes_with_client(
 fn count_cards_needing_clozes(cards: &[Card]) -> usize {
     cards
         .iter()
-        .filter(|card| {
-            matches!(
-                card.content,
-                CardContent::Cloze {
-                    cloze_range: None,
-                    ..
-                }
-            )
-        })
+        .filter(|card| does_card_need_cloze(card))
         .count()
+}
+
+fn does_card_need_cloze(card: &Card) -> bool {
+    matches!(
+        card.content,
+        CardContent::Cloze {
+            cloze_range: None,
+            ..
+        }
+    )
 }
 
 fn count_cards_neeing_rephrase(cards: &[Card], rephrase_questions: bool) -> usize {
@@ -257,6 +278,12 @@ fn count_cards_neeing_rephrase(cards: &[Card], rephrase_questions: bool) -> usiz
 
     cards
         .iter()
-        .filter(|card| matches!(card.content, CardContent::Basic { .. }))
+        .filter(|card| does_card_need_rephrase(card, rephrase_questions))
         .count()
+}
+fn does_card_need_rephrase(card: &Card, rephrase_questions: bool) -> bool {
+    if !rephrase_questions {
+        return false;
+    }
+    matches!(card.content, CardContent::Basic { .. })
 }

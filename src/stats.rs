@@ -134,15 +134,15 @@ mod tests {
     use std::path::PathBuf;
 
     fn sample_card(path: &str) -> Card {
-        Card {
-            file_path: PathBuf::from(path),
-            file_card_range: (0, 1),
-            content: CardContent::Basic {
+        Card::new(
+            PathBuf::from(path),
+            (0, 1),
+            CardContent::Basic {
                 question: "Q".into(),
                 answer: "A".into(),
             },
-            card_hash: "hash".into(),
-        }
+            "hash".into(),
+        )
     }
 
     fn default_row() -> CardStatsRow {
