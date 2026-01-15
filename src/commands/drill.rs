@@ -6,7 +6,8 @@ use crate::card::{Card, CardContent};
 use crate::cloze_utils::{cloze_user_prompt, mask_cloze_text, resolve_missing_clozes_with_client};
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
-use crate::llm::ensure_client;
+use crate::llm::drill_preprocessor::DrillPreprocessor;
+use crate::llm::{drill_preprocessor, ensure_client};
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
 use crate::parser::{Media, extract_media};
@@ -38,7 +39,7 @@ use tokio::sync::oneshot::error::TryRecvError;
 
 const MINUTES_PER_DAY: f64 = 24.0 * 60.0;
 const FLASH_SECS: f64 = 2.0;
-const INITIAL_PREFETCH_CARDS: usize = 8;
+pub const INITIAL_PREFETCH_CARDS: usize = 5;
 
 pub async fn run(
     db: &DB,
@@ -57,82 +58,21 @@ pub async fn run(
         return Ok(());
     }
 
-    let (rephrase_client, cloze_client) =
-        prepare_llm_clients(&cards_due_today, rephrase_questions)?;
-    let should_preprocess = rephrase_client.is_some() || cloze_client.is_some();
-
-    if !should_preprocess {
-        start_drill_session(db, cards_due_today, None).await?;
-        return Ok(());
-    }
-
-    let initial_count = cards_due_today.len().min(INITIAL_PREFETCH_CARDS);
-    let remaining_cards = cards_due_today.split_off(initial_count);
-    let mut initial_cards = cards_due_today;
-
-    preprocess_cards_with_clients(
-        &mut initial_cards,
-        rephrase_questions,
-        rephrase_client.clone(),
-        cloze_client.clone(),
-    )
-    .await?;
-
-    let pending_cards = if remaining_cards.is_empty() {
-        None
-    } else {
-        Some(spawn_background_preprocess(
-            remaining_cards,
-            rephrase_questions,
-            rephrase_client,
-            cloze_client,
-        ))
-    };
-
-    start_drill_session(db, initial_cards, pending_cards).await?;
+    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions)?;
+    // let pending_cards = if remaining_cards.is_empty() {
+    //     None
+    // } else {
+    //     Some(spawn_background_preprocess(
+    //         remaining_cards,
+    //         rephrase_questions,
+    //         rephrase_client,
+    //         cloze_client,
+    //     ))
+    // };
+    //
+    start_drill_session(db, cards_due_today, drill_preprocessor).await?;
 
     Ok(())
-}
-
-fn prepare_llm_clients(
-    cards: &[Card],
-    rephrase_questions: bool,
-) -> Result<(
-    Option<Arc<Client<OpenAIConfig>>>,
-    Option<Arc<Client<OpenAIConfig>>>,
-)> {
-    let rephrase_client = if rephrase_questions {
-        rephrase_user_prompt(cards).map(|prompt| {
-            ensure_client(&prompt)
-                .with_context(|| "Failed to initialize LLM client, cannot rephrase questions")
-                .map(Arc::new)
-        })
-    } else {
-        None
-    }
-    .transpose()?;
-
-    let cloze_client = cloze_user_prompt(cards)
-        .map(|prompt| {
-            let total_missing = cards
-                .iter()
-                .filter(|card| {
-                    matches!(card.content, CardContent::Cloze { cloze_range: None, .. })
-                })
-                .count();
-            let plural = if total_missing == 1 { "" } else { "s" };
-            ensure_client(&prompt)
-                .with_context(|| {
-                    format!(
-                        "Failed to initialize LLM client, cannot synthesize Cloze text for {} card{plural} in your collection",
-                        total_missing
-                    )
-                })
-                .map(Arc::new)
-        })
-        .transpose()?;
-
-    Ok((rephrase_client, cloze_client))
 }
 
 async fn preprocess_cards_with_clients(
@@ -141,10 +81,9 @@ async fn preprocess_cards_with_clients(
     rephrase_client: Option<Arc<Client<OpenAIConfig>>>,
     cloze_client: Option<Arc<Client<OpenAIConfig>>>,
 ) -> Result<()> {
-    if rephrase_questions
-        && let Some(client) = rephrase_client {
-            rephrase_basic_questions_with_client(cards, client).await?;
-        }
+    if rephrase_questions && let Some(client) = rephrase_client {
+        rephrase_basic_questions_with_client(cards, client).await?;
+    }
     if let Some(client) = cloze_client {
         resolve_missing_clozes_with_client(cards, client).await?;
     }
@@ -266,7 +205,7 @@ impl<'a> DrillState<'a> {
 async fn start_drill_session(
     db: &DB,
     cards: Vec<Card>,
-    mut pending_cards: Option<oneshot::Receiver<Result<Vec<Card>>>>,
+    drill_preprocessor: DrillPreprocessor,
 ) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
@@ -287,7 +226,7 @@ async fn start_drill_session(
 
     let loop_result: Result<()> = async {
         loop {
-            ingest_pending_cards(&mut state, &mut pending_cards)?;
+            ingest_pending_cards(&mut state)?;
             let waiting_for_cards = is_waiting_for_cards(&state, &pending_cards);
 
             if state.is_complete() && !waiting_for_cards {
@@ -403,10 +342,7 @@ async fn start_drill_session(
     loop_result
 }
 
-fn ingest_pending_cards(
-    state: &mut DrillState<'_>,
-    pending_cards: &mut Option<oneshot::Receiver<Result<Vec<Card>>>>,
-) -> Result<()> {
+fn ingest_pending_cards(state: &mut DrillState<'_>) -> Result<()> {
     let Some(receiver) = pending_cards.as_mut() else {
         return Ok(());
     };
