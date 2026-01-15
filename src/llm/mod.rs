@@ -2,6 +2,7 @@ pub mod client;
 pub mod cloze;
 pub mod drill_preprocessor;
 pub mod rephrase;
+pub mod response;
 pub mod secrets;
 
 pub use client::{ensure_client, test_configured_api_key};

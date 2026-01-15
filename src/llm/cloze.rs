@@ -1,11 +1,7 @@
-use anyhow::{Result, bail};
-use async_openai::{
-    Client,
-    config::OpenAIConfig,
-    types::responses::{
-        CreateResponseArgs, InputMessage, InputRole, OutputItem, OutputMessageContent,
-    },
-};
+use anyhow::Result;
+use async_openai::{Client, config::OpenAIConfig};
+
+use super::response::request_single_text_response;
 
 const CLOZE_MODEL: &str = "gpt-5-nano";
 
@@ -34,34 +30,5 @@ This is the text you should generate the Cloze deletion for:
 pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<String> {
     let user_prompt = format!("{USER_PROMPT_HEADER}{text}");
 
-    let request = CreateResponseArgs::default()
-        .model(CLOZE_MODEL)
-        .max_output_tokens(5000_u32)
-        .input(vec![
-            InputMessage {
-                role: InputRole::System,
-                content: vec![SYSTEM_PROMPT.into()],
-                status: None,
-            },
-            InputMessage {
-                role: InputRole::User,
-                content: vec![user_prompt.into()],
-                status: None,
-            },
-        ])
-        .build()?;
-
-    let response = client.responses().create(request).await?;
-
-    for item in response.output {
-        if let OutputItem::Message(message) = item {
-            for content in message.content {
-                if let OutputMessageContent::OutputText(text) = content {
-                    return Ok(text.text);
-                }
-            }
-        }
-    }
-
-    bail!("No text output returned from model")
+    request_single_text_response(client, CLOZE_MODEL, SYSTEM_PROMPT, &user_prompt).await
 }

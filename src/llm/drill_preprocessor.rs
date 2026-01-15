@@ -35,7 +35,11 @@ pub struct DrillPreprocessor {
 impl DrillPreprocessor {
     pub fn new(cards: &[Card], rephrase_questions: bool) -> Result<Self> {
         let cards_needing_clozes = count_cards_needing_clozes(cards);
-        let cards_needing_rephrase = count_cards_neeing_rephrase(cards, rephrase_questions);
+        let cards_needing_rephrase = if rephrase_questions {
+            count_cards_needing_rephrase(cards)
+        } else {
+            0
+        };
 
         let rephrase_prompt = if cards_needing_rephrase > 0 {
             rephrase_user_prompt(cards)
@@ -91,7 +95,7 @@ impl DrillPreprocessor {
                 card.ai_status = AIStatus::ClozeNeedDeletion;
             }
 
-            if does_card_need_rephrase(card, self.rephrase_questions) {
+            if self.rephrase_questions && does_card_need_rephrase(card) {
                 card.ai_status = AIStatus::QuestionNeedRephrasing;
             }
         }
@@ -271,19 +275,12 @@ fn does_card_need_cloze(card: &Card) -> bool {
     )
 }
 
-fn count_cards_neeing_rephrase(cards: &[Card], rephrase_questions: bool) -> usize {
-    if !rephrase_questions {
-        return 0_usize;
-    }
-
+fn count_cards_needing_rephrase(cards: &[Card]) -> usize {
     cards
         .iter()
-        .filter(|card| does_card_need_rephrase(card, rephrase_questions))
+        .filter(|card| does_card_need_rephrase(card))
         .count()
 }
-fn does_card_need_rephrase(card: &Card, rephrase_questions: bool) -> bool {
-    if !rephrase_questions {
-        return false;
-    }
+fn does_card_need_rephrase(card: &Card) -> bool {
     matches!(card.content, CardContent::Basic { .. })
 }
