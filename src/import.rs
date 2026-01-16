@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
 use sqlx::{Row, SqlitePool};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
@@ -12,6 +12,8 @@ use zip::ZipArchive;
 use anyhow::{Context, Result, anyhow, bail};
 
 use crate::crud::DB;
+use crate::palette::Palette;
+use crate::parser::get_hash;
 
 static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?is)<[^>]+>").unwrap());
 static CLOZE_RE: Lazy<Regex> =
@@ -33,7 +35,7 @@ enum ModelKind {
 struct CardRecord {
     deck_id: i64,
     model_id: i64,
-    ord: i64,
+    card_order: i64,
     fields: Vec<String>,
 }
 
@@ -70,9 +72,15 @@ fn extract_collection_db(apkg: &Path) -> Result<NamedTempFile> {
 
     let mut zip = ZipArchive::new(file).context("failed to read apkg as zip archive")?;
 
-    let mut entry = zip
-        .by_name("collection.anki21")
-        .context("apkg does not contain collection.anki21, the newer export format DB")?;
+    let mut entry = {
+        if let Ok(e) = zip.by_name("collection.anki21") {
+            e
+        } else {
+            zip.by_name("collection.anki2").context(
+                "apkg does not contain the newer collection.anki21 or the older collection.anki2",
+            )?
+        }
+    };
 
     let mut temp =
         NamedTempFile::new().context("failed to create temporary file for sqlite database")?;
@@ -93,6 +101,11 @@ async fn load_metadata(
     let models_raw: String = row.try_get("models")?;
     let decks = parse_decks(&decks_raw)?;
     let models = parse_models(&models_raw)?;
+    println!(
+        "{} decks and {} models in DB schema",
+        Palette::paint(Palette::WARNING, decks.len()),
+        Palette::paint(Palette::WARNING, models.len())
+    );
     Ok((decks, models))
 }
 
@@ -138,10 +151,10 @@ async fn load_cards(pool: &SqlitePool) -> Result<Vec<CardRecord>> {
     let rows = sqlx::query(
         r#"
         SELECT
-            cards.did as did,
-            cards.ord as ord,
-            notes.mid as mid,
-            notes.flds as flds
+            cards.did  AS did,  -- deck id
+            cards.ord  AS ord,  -- card order (template ordinal)
+            notes.mid  AS mid,  -- model (note type) id
+            notes.flds AS flds  -- packed field values
         FROM cards
         JOIN notes ON notes.id = cards.nid
         ORDER BY cards.did, notes.id, cards.ord
@@ -152,7 +165,7 @@ async fn load_cards(pool: &SqlitePool) -> Result<Vec<CardRecord>> {
     let mut cards = Vec::with_capacity(rows.len());
     for row in rows {
         let deck_id: i64 = row.try_get("did")?;
-        let ord: i64 = row.try_get("ord")?;
+        let card_order: i64 = row.try_get("ord")?;
         let model_id: i64 = row.try_get("mid")?;
 
         //"Examples of supervised methods with built-in feature selection\u{1f}Decision trees<br><div>LASSO (linear regression with L1 regularization)</div>\u{1f}<a href=\"https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/\">https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/</a>\u{1f}"
@@ -160,11 +173,15 @@ async fn load_cards(pool: &SqlitePool) -> Result<Vec<CardRecord>> {
         let card = CardRecord {
             deck_id,
             model_id,
-            ord,
+            card_order,
             fields: split_fields(&fields_raw),
         };
         cards.push(card);
     }
+    println!(
+        "{} cards in DB",
+        Palette::paint(Palette::WARNING, cards.len())
+    );
     Ok(cards)
 }
 
@@ -173,18 +190,45 @@ fn build_exports(
     models: &HashMap<i64, ModelKind>,
 ) -> HashMap<i64, Vec<String>> {
     let mut per_deck: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut num_duplicates = 0;
+    let mut content_hashes: HashSet<String> = HashSet::new();
+
+    let mut unexportable = 0;
     for card in cards {
         let Some(model) = models.get(&card.model_id) else {
+            println!(
+                "Card with an unknown model id found: {}",
+                Palette::paint(Palette::DANGER, card.model_id)
+            );
             continue;
         };
         let entry = match model {
-            ModelKind::Basic => basic_entry(&card.fields, card.ord),
+            ModelKind::Basic => basic_entry(&card.fields, card.card_order),
             ModelKind::Cloze => cloze_entry(&card.fields),
         };
-        if let Some(content) = entry {
-            per_deck.entry(card.deck_id).or_default().push(content);
+
+        let Some(content) = entry else {
+            unexportable += 1;
+            continue;
+        };
+        let Some(content_hash) = get_hash(&content) else {
+            unexportable += 1;
+            continue;
+        };
+        if !content_hashes.insert(content_hash) {
+            num_duplicates += 1;
+            continue;
         }
+        per_deck.entry(card.deck_id).or_default().push(content);
     }
+    println!(
+        "Removing {} duplicates",
+        Palette::paint(Palette::WARNING, num_duplicates)
+    );
+    println!(
+        "{} unexportable cards",
+        Palette::paint(Palette::WARNING, unexportable)
+    );
     per_deck
 }
 
@@ -193,10 +237,22 @@ fn write_exports(
     decks: &HashMap<i64, DeckInfo>,
     exports: HashMap<i64, Vec<String>>,
 ) -> Result<()> {
+    for deck_id in decks.keys() {
+        let exports_per_deck = exports.get(deck_id).map(|v| v.len()).unwrap_or(0);
+        println!(
+            "Deck {} has {} cards",
+            Palette::paint(Palette::ACCENT, decks.get(deck_id).unwrap().name.as_str()),
+            Palette::paint(Palette::WARNING, exports_per_deck)
+        );
+    }
     let mut entries: Vec<(i64, Vec<String>)> = exports
         .into_iter()
         .filter(|(_, cards)| !cards.is_empty())
         .collect();
+    println!(
+        "There are {} decks with at least one card",
+        Palette::paint(Palette::WARNING, entries.len())
+    );
     entries.sort_by(|(a, _), (b, _)| {
         let name_a = decks.get(a).map(|d| d.name.as_str()).unwrap_or("");
         let name_b = decks.get(b).map(|d| d.name.as_str()).unwrap_or("");
@@ -222,9 +278,14 @@ fn write_exports(
             fs::create_dir_all(parent)?;
         }
         let mut content = String::new();
-        for card in cards {
-            content.push_str(&card);
+        for card in &cards {
+            content.push_str(card);
         }
+        println!(
+            "Writing {} cards to {}",
+            Palette::paint(Palette::WARNING, cards.len()),
+            Palette::paint(Palette::ACCENT, path.display())
+        );
         fs::write(&path, content)?;
     }
     Ok(())
@@ -261,7 +322,7 @@ fn deck_components(name: &str) -> Vec<String> {
 }
 
 fn sanitize_component(input: &str) -> String {
-    let trimmed = input.trim();
+    let trimmed = input.trim().trim_start_matches('.');
     if trimmed.is_empty() {
         return String::new();
     }
@@ -358,5 +419,29 @@ mod tests {
             vec!["Data Science".to_string(), "-ETL--".to_string()]
         );
         assert_eq!(deck_components(""), vec!["Deck".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_with_apkg() {
+        let test_file =
+            PathBuf::from("test_data/United_Kingdom_UK_Geography_Regions_Counties_and_Cities.apkg");
+        let db_path = extract_collection_db(&test_file).unwrap();
+        dbg!(&db_path);
+
+        let db_url = format!("sqlite://{}", db_path.path().display());
+
+        let export_db = SqlitePool::connect(&db_url)
+            .await
+            .context("failed to connect to Anki database")
+            .unwrap();
+
+        let (decks, models) = load_metadata(&export_db).await.unwrap();
+        assert_eq!(decks.len(), 2);
+        assert_eq!(models.len(), 2);
+        let cards = load_cards(&export_db).await.unwrap();
+        assert_eq!(cards.len(), 545);
+        let exports = build_exports(cards, &models);
+        let len = exports.values().next().map(|v: &Vec<String>| v.len());
+        assert_eq!(len, Some(320));
     }
 }

@@ -394,7 +394,7 @@ mod tests {
             assert!(card.file_path.to_string_lossy().contains("test_data"));
         }
         assert_eq!(stats.markdown_files, 2);
-        assert_eq!(stats.files_searched, 3);
+        assert_eq!(stats.files_searched, 4);
 
         let dir_path = PathBuf::from("test_data/");
         let file_path = PathBuf::from("test_data/test.md");
