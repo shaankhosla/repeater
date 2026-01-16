@@ -29,18 +29,27 @@ pub struct VersionUpdateStats {
     pub last_version_check_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+fn should_notify(now: chrono::DateTime<chrono::Utc>, stats: &VersionUpdateStats) -> bool {
+    if let Some(last_check) = stats.last_version_check_at
+        && now.signed_duration_since(last_check) < chrono::Duration::from_std(ONE_DAY).unwrap()
+    {
+        return false;
+    }
+
+    if let Some(last_prompted) = stats.last_prompted_at
+        && now.signed_duration_since(last_prompted) < chrono::Duration::from_std(ONE_WEEK).unwrap()
+    {
+        return false;
+    }
+
+    true
+}
+
 pub async fn check_version(db: DB) -> Option<VersionNotification> {
     let now = chrono::Utc::now();
     let version_update_stats = db.get_version_update_information().await.ok()?;
 
-    if let Some(last_check) = version_update_stats.last_version_check_at
-        && now.signed_duration_since(last_check) < chrono::Duration::from_std(ONE_DAY).ok()?
-    {
-        return None;
-    }
-    if let Some(last_prompted) = version_update_stats.last_prompted_at
-        && now.signed_duration_since(last_prompted) < chrono::Duration::from_std(ONE_WEEK).ok()?
-    {
+    if !should_notify(now, &version_update_stats) {
         return None;
     }
 
@@ -126,5 +135,45 @@ mod tests {
     fn test_normalize_version() {
         assert_eq!(normalize_version("v1.0.0"), "1.0.0");
         assert_eq!(normalize_version("1.0.0"), "1.0.0");
+    }
+    #[test]
+    fn should_notify_when_never_checked_or_prompted() {
+        let now = chrono::Utc::now();
+        let stats = VersionUpdateStats::default();
+
+        assert!(should_notify(now, &stats));
+    }
+
+    #[test]
+    fn should_not_notify_if_checked_within_one_day() {
+        let now = chrono::Utc::now();
+        let stats = VersionUpdateStats {
+            last_version_check_at: Some(now - chrono::Duration::hours(12)),
+            last_prompted_at: None,
+        };
+
+        assert!(!should_notify(now, &stats));
+    }
+
+    #[test]
+    fn should_not_notify_if_prompted_within_one_week() {
+        let now = chrono::Utc::now();
+        let stats = VersionUpdateStats {
+            last_version_check_at: Some(now - chrono::Duration::days(2)),
+            last_prompted_at: Some(now - chrono::Duration::days(3)),
+        };
+
+        assert!(!should_notify(now, &stats));
+    }
+
+    #[test]
+    fn should_notify_if_both_are_old() {
+        let now = chrono::Utc::now();
+        let stats = VersionUpdateStats {
+            last_version_check_at: Some(now - chrono::Duration::days(2)),
+            last_prompted_at: Some(now - chrono::Duration::days(10)),
+        };
+
+        assert!(should_notify(now, &stats));
     }
 }

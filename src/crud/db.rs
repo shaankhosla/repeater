@@ -45,3 +45,21 @@ impl DB {
         Self::connect(options).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::env::temp_dir;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_db_connection() {
+        let db_path = temp_dir().join("cards.db");
+
+        let options = SqliteConnectOptions::from_str(&db_path.to_string_lossy())
+            .unwrap()
+            .create_if_missing(true);
+
+        DB::connect(options).await.unwrap();
+    }
+}
