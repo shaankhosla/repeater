@@ -21,7 +21,6 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install system dependencies
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
