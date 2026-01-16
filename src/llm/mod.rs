@@ -1,6 +1,7 @@
 pub mod client;
 pub mod cloze;
 pub mod drill_preprocessor;
+pub mod prompt_user;
 pub mod rephrase;
 pub mod response;
 pub mod secrets;

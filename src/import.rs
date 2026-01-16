@@ -425,8 +425,8 @@ mod tests {
     async fn test_with_apkg() {
         let test_file =
             PathBuf::from("test_data/United_Kingdom_UK_Geography_Regions_Counties_and_Cities.apkg");
+        validate_path(&test_file).unwrap();
         let db_path = extract_collection_db(&test_file).unwrap();
-        dbg!(&db_path);
 
         let db_url = format!("sqlite://{}", db_path.path().display());
 

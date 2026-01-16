@@ -4,9 +4,9 @@ use anyhow::{Context, Result};
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 
+use super::prompt_user::{cloze_user_prompt, rephrase_user_prompt};
 use crate::card::{Card, CardContent, ClozeRange};
-use crate::cloze_utils::{cloze_user_prompt, find_cloze_ranges};
-use crate::question_utils::rephrase_user_prompt;
+use crate::cloze_utils::find_cloze_ranges;
 
 use super::{ensure_client, request_cloze};
 
@@ -42,12 +42,12 @@ impl DrillPreprocessor {
         };
 
         let rephrase_prompt = if cards_needing_rephrase > 0 {
-            rephrase_user_prompt(cards)
+            rephrase_user_prompt(cards, cards_needing_rephrase)
         } else {
             None
         };
         let cloze_prompt = if cards_needing_clozes > 0 {
-            cloze_user_prompt(cards)
+            cloze_user_prompt(cards, cards_needing_clozes)
         } else {
             None
         };
@@ -265,7 +265,7 @@ fn count_cards_needing_clozes(cards: &[Card]) -> usize {
         .count()
 }
 
-fn does_card_need_cloze(card: &Card) -> bool {
+pub fn does_card_need_cloze(card: &Card) -> bool {
     matches!(
         card.content,
         CardContent::Cloze {
