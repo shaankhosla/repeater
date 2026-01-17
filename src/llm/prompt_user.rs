@@ -58,7 +58,7 @@ fn cloze_build_user_prompt(total_needing: usize, card_text: &str) -> String {
     user_prompt.push('\n');
     user_prompt.push_str(&format!(
         "{} found {} cloze card{plural} missing bracketed deletions.\n\
-        Please format correctly or use AI to auto detect deletions.",
+        Please format correctly or use AI to generate them for you.\n",
         Palette::paint(Palette::INFO, "repeater"),
         Palette::paint(Palette::WARNING, total_needing),
         plural = plural,
@@ -80,7 +80,11 @@ fn cloze_build_user_prompt(total_needing: usize, card_text: &str) -> String {
     } else {
         String::new()
     };
-    user_prompt.push_str(other_fragment.as_str());
+    user_prompt.push_str(&format!(
+        "\n{} can send this text{other_fragment} to an LLM to generate a Cloze for you.\n",
+        Palette::paint(Palette::INFO, "repeater"),
+        other_fragment = other_fragment
+    ));
 
     user_prompt
 }
