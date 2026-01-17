@@ -4,16 +4,16 @@ use anyhow::{Context, Result};
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 
-use super::prompt_user::{cloze_user_prompt, rephrase_user_prompt};
+use super::prompt_user::{ask_yn, cloze_user_prompt, rephrase_user_prompt};
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::cloze_utils::find_cloze_ranges;
 
 use super::{ensure_client, request_cloze};
 
+use crate::llm::request_question_rephrase;
 use std::collections::HashMap;
 
-use crate::llm::request_question_rephrase;
-
+use crate::utils::pluralize;
 use futures::stream::{self, StreamExt};
 
 const MAX_CONCURRENT_LLM_REQUESTS: usize = 4;
@@ -79,6 +79,21 @@ impl DrillPreprocessor {
             }
             None => None,
         };
+
+        if cards_needing_clozes > 0 {
+            let ok = ask_yn(
+                format!(
+                    "Use AI to detect bracketed deletions in {}? [y/n]",
+                    pluralize("cloze card", cards_needing_clozes)
+                ),
+                true,
+            );
+            if !ok {
+                return Err(anyhow::anyhow!(
+                    "Please run `repeater llm key --set ` to enable AI"
+                ));
+            }
+        }
 
         Ok(Self {
             client,

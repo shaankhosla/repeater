@@ -1,5 +1,7 @@
 use crate::card::{Card, CardContent};
 use crate::palette::Palette;
+use dialoguer::Input;
+use dialoguer::theme::ColorfulTheme;
 
 pub fn rephrase_user_prompt(cards: &[Card], total_needing: usize) -> Option<String> {
     let mut sample_question: Option<String> = None;
@@ -27,6 +29,26 @@ fn rephrase_build_user_prompt(total: usize, sample_question: &str) -> String {
     )
 }
 
+pub fn ask_yn(prompt: String, default: bool) -> bool {
+    let default_str = if default { "y" } else { "n" }.to_string();
+
+    loop {
+        let s: String = Input::with_theme(&ColorfulTheme::default())
+            .with_prompt(format!("{prompt} [y/n]"))
+            .default(default_str.clone())
+            .interact_text() // shows editable input with cursor, waits for Enter
+            .unwrap();
+
+        match s.trim().to_lowercase().as_str() {
+            "" if default => return true,
+            "" if !default => return false,
+            "y" | "yes" => return true,
+            "n" | "no" => return false,
+            _ => eprintln!("Please answer y or n."),
+        }
+    }
+}
+
 fn cloze_build_user_prompt(total_needing: usize, card_text: &str) -> String {
     let additional_missing = total_needing.saturating_sub(1);
     let mut user_prompt = String::new();
@@ -35,34 +57,34 @@ fn cloze_build_user_prompt(total_needing: usize, card_text: &str) -> String {
 
     user_prompt.push('\n');
     user_prompt.push_str(&format!(
-        "{} found {} cloze card{plural} missing bracketed deletions.",
+        "{} found {} cloze card{plural} missing bracketed deletions.\n",
         Palette::paint(Palette::INFO, "repeater"),
         Palette::paint(Palette::WARNING, total_needing),
-        plural = plural,
+        plural = plural
     ));
 
     user_prompt.push_str(&format!(
-        "\n\n{}\n{sample}\n",
+        "\n{}\n{sample}\n",
         Palette::dim("Example needing a Cloze:"),
         sample = card_text
     ));
 
-    let other_fragment = if additional_missing > 0 {
-        let other_plural = if additional_missing == 1 { "" } else { "s" };
-        format!(
-            " along with {} other card{other_plural}",
+    user_prompt.push('\n');
+    if additional_missing > 0 {
+        let plural = if additional_missing == 1 { "" } else { "s" };
+        user_prompt.push_str(&format!(
+            "{} can send this text along with {} other card{} to an LLM to generate a Cloze for you.\n",
+            Palette::paint(Palette::INFO, "repeater"),
             Palette::paint(Palette::WARNING, additional_missing),
-            other_plural = other_plural
-        )
+            plural
+        ));
     } else {
-        String::new()
-    };
+        user_prompt.push_str(&format!(
+            "{} can send this text to an LLM to generate a Cloze for you.\n",
+            Palette::paint(Palette::INFO, "repeater")
+        ));
+    }
 
-    user_prompt.push_str(&format!(
-        "\n{} can send this text{other_fragment} to an LLM to generate a Cloze for you.\n",
-        Palette::paint(Palette::INFO, "repeater"),
-        other_fragment = other_fragment
-    ));
     user_prompt
 }
 

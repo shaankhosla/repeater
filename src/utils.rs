@@ -16,6 +16,14 @@ pub fn trim_line(line: &str) -> Option<&str> {
     }
 }
 
+pub fn pluralize(word: &str, count: usize) -> String {
+    if count == 1 {
+        format!("{count} {word}")
+    } else {
+        format!("{count} {word}s")
+    }
+}
+
 pub fn strip_controls_and_escapes(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
