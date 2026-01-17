@@ -1,3 +1,4 @@
+use crate::llm::prompt_user::ask_yn;
 use crate::llm::secrets::API_KEY_ENV;
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -10,8 +11,8 @@ use super::secrets::{
 
 pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let lookup = get_api_key_from_sources()?;
-    let key = if let Some(api_key) = lookup.api_key {
-        api_key
+    let (key, prompted_for_key) = if let Some(api_key) = lookup.api_key {
+        (api_key, false)
     } else {
         let api_key = prompt_for_api_key(user_prompt)?;
         if api_key.is_empty() {
@@ -27,8 +28,17 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
             store_api_key(&api_key)?;
         }
 
-        api_key
+        (api_key, true)
     };
+
+    // If we didn't prompt for the API key (it already existed), confirm with the user
+    if !prompted_for_key {
+        let ok = ask_yn(user_prompt.to_string(), true);
+        if !ok {
+            bail!("Unable to proceed. Please consider using LLM to complete action.");
+        }
+    }
+
     let client = initialize_client(&key)?;
     Ok(client)
 }

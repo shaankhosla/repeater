@@ -11,6 +11,7 @@ use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
 use crate::parser::{Media, extract_media};
 use crate::tui::Theme;
+use crate::utils::pluralize;
 
 use anyhow::{Context, Result};
 use crossterm::event::KeyModifiers;
@@ -354,11 +355,10 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
         ];
         if !state.current_medias.is_empty() {
             let num_media = state.current_medias.len();
-            let plural = if num_media == 1 { "" } else { "s" };
             line.push(Theme::bullet());
             line.push(Theme::span(format!(
-                "{} media file{plural} found in card ",
-                num_media
+                "{} found in card ",
+                pluralize("media file", num_media)
             )));
             line.push(Theme::key_chip("O"));
             line.push(Theme::span(" open"));

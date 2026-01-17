@@ -1,6 +1,7 @@
 use crate::{
     card::CardType,
     crud::DB,
+    llm::prompt_user::ask_yn,
     parser::{cards_from_md, content_to_card},
     tui::Editor,
     tui::Theme,
@@ -40,25 +41,19 @@ pub async fn run(db: &DB, card_path: PathBuf) -> Result<()> {
     }
 
     let file_exists = card_path.is_file();
-    if !file_exists && !prompt_create(&card_path)? {
-        println!("Aborting; card not created.");
-        return Ok(());
+    if !file_exists {
+        let should_create = ask_yn(
+            format!("Card '{}' does not exist. Create it?", card_path.display()),
+            false,
+        );
+        if !should_create {
+            println!("Aborting; card not created.");
+            return Ok(());
+        }
     }
 
     capture_cards(db, &card_path).await?;
     Ok(())
-}
-
-fn prompt_create(path: &Path) -> io::Result<bool> {
-    print!(
-        "Card '{}' does not exist. Create it? [y/N]: ",
-        path.display()
-    );
-    io::stdout().flush()?;
-    let mut answer = String::new();
-    io::stdin().read_line(&mut answer)?;
-    let trimmed = answer.trim().to_lowercase();
-    Ok(trimmed == "y" || trimmed == "yes")
 }
 
 async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result<()> {

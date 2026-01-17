@@ -10,9 +10,8 @@ use crate::cloze_utils::find_cloze_ranges;
 
 use super::{ensure_client, request_cloze};
 
-use std::collections::HashMap;
-
 use crate::llm::request_question_rephrase;
+use std::collections::HashMap;
 
 use futures::stream::{self, StreamExt};
 

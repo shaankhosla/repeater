@@ -16,6 +16,23 @@ pub fn trim_line(line: &str) -> Option<&str> {
     }
 }
 
+pub fn pluralize(word: &str, count: usize) -> String {
+    pluralize_with(word, count, |n| n.to_string())
+}
+
+pub fn pluralize_with<F>(word: &str, count: usize, format_count: F) -> String
+where
+    F: Fn(usize) -> String,
+{
+    let count_str = format_count(count);
+
+    if count == 1 {
+        format!("{count_str} {word}")
+    } else {
+        format!("{count_str} {word}s")
+    }
+}
+
 pub fn strip_controls_and_escapes(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
@@ -57,5 +74,23 @@ mod tests {
     fn test_is_markdown() {
         assert!(is_markdown(Path::new("test.md")));
         assert!(!is_markdown(Path::new("test.txt")));
+    }
+
+    #[test]
+    fn test_pluralize_single() {
+        assert_eq!(pluralize("card", 1), "1 card");
+        assert_eq!(pluralize("cloze card", 1), "1 cloze card");
+    }
+
+    #[test]
+    fn test_pluralize_multiple() {
+        assert_eq!(pluralize("card", 2), "2 cards");
+        assert_eq!(pluralize("card", 5), "5 cards");
+        assert_eq!(pluralize("cloze card", 3), "3 cloze cards");
+    }
+
+    #[test]
+    fn test_pluralize_zero() {
+        assert_eq!(pluralize("card", 0), "0 cards");
     }
 }
