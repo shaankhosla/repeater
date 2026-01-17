@@ -316,9 +316,7 @@ async fn start_drill_session(
     loop_result
 }
 
-fn teardown_terminal(
-    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
-) -> Result<()> {
+fn teardown_terminal(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result<()> {
     disable_raw_mode().context("failed to disable raw mode")?;
     execute!(
         terminal.backend_mut(),
