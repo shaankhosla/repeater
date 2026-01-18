@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use dialoguer::{Password, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
 
 use crate::utils::get_data_dir;
+use crate::utils::trim_line;
 use crate::{palette::Palette, utils::strip_controls_and_escapes};
 
 pub const API_KEY_ENV: &str = "REPEATER_OPENAI_API_KEY";
@@ -93,10 +94,7 @@ pub struct ApiKeyLookup {
 }
 
 pub fn store_api_key(api_key: &str) -> Result<()> {
-    let trimmed = api_key.trim();
-    if trimmed.is_empty() {
-        bail!("Cannot store an empty API key");
-    }
+    let trimmed = trim_line(api_key).with_context(|| "Cannot store an empty API key")?;
 
     let auth_path = auth_file_path()?;
     let mut auth = read_auth_file(&auth_path)?.unwrap_or_default();
@@ -156,16 +154,9 @@ fn auth_file_path() -> Result<PathBuf> {
     Ok(data_dir.join(AUTH_FILE_NAME))
 }
 
-fn read_auth_file(path: &PathBuf) -> Result<Option<AuthFile>> {
+fn read_auth_file(path: &Path) -> Result<Option<AuthFile>> {
     match fs::read_to_string(path) {
-        Ok(contents) => {
-            if contents.trim().is_empty() {
-                return Ok(Some(AuthFile::default()));
-            }
-            let parsed: AuthFile = serde_json::from_str(&contents)
-                .with_context(|| format!("Failed to parse auth file at {}", path.display()))?;
-            Ok(Some(parsed))
-        }
+        Ok(contents) => Ok(parse_auth_contents(&contents, path)?),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(err) => {
             Err(err).with_context(|| format!("Failed to read auth file at {}", path.display()))
@@ -173,9 +164,123 @@ fn read_auth_file(path: &PathBuf) -> Result<Option<AuthFile>> {
     }
 }
 
-fn write_auth_file(path: &PathBuf, value: &AuthFile) -> Result<()> {
-    let contents = serde_json::to_string_pretty(value)?;
-    fs::write(path, format!("{}\n", contents))
+fn write_auth_file(path: &Path, value: &AuthFile) -> Result<()> {
+    let contents = serialize_auth(value)?;
+    fs::write(path, contents)
         .with_context(|| format!("Failed to write auth file at {}", path.display()))?;
     Ok(())
+}
+
+fn parse_auth_contents(contents: &str, path: &Path) -> Result<Option<AuthFile>> {
+    if contents.trim().is_empty() {
+        return Ok(Some(AuthFile::default()));
+    }
+
+    let parsed: AuthFile = serde_json::from_str(contents)
+        .with_context(|| format!("Failed to parse auth file at {}", path.display()))?;
+    Ok(Some(parsed))
+}
+
+fn serialize_auth(value: &AuthFile) -> Result<String> {
+    let contents = serde_json::to_string_pretty(value)?;
+    Ok(format!("{}\n", contents))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_auth_contents_handles_empty() {
+        let path = Path::new("auth.json");
+        let parsed = parse_auth_contents("   \n", path).unwrap();
+        let auth = parsed.expect("expected auth file for empty contents");
+        assert!(auth.providers.is_empty());
+    }
+
+    #[test]
+    fn serialize_auth_adds_trailing_newline() {
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "test-key".to_string(),
+            },
+        );
+
+        let serialized = serialize_auth(&auth).unwrap();
+        assert!(serialized.ends_with('\n'));
+        let parsed: AuthFile = serde_json::from_str(serialized.trim()).unwrap();
+        assert_eq!(
+            parsed
+                .providers
+                .get(OPENAI_PROVIDER)
+                .map(|entry| entry.key.as_str()),
+            Some("test-key")
+        );
+    }
+    #[test]
+    fn file_doesnt_exist() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let unexisting_file_auth = read_auth_file(&path).unwrap();
+        assert!(unexisting_file_auth.is_none());
+    }
+
+    #[test]
+    fn overwrite() {
+        let dir = tempdir().unwrap();
+        let auth_path = dir.path().join("auth.json");
+
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "fake-key".to_string(),
+            },
+        );
+        write_auth_file(&auth_path, &auth).unwrap();
+
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "actual-key".to_string(),
+            },
+        );
+
+        write_auth_file(&auth_path, &auth).unwrap();
+        let read_back = read_auth_file(&auth_path).unwrap();
+        let auth = read_back.expect("expected auth file to exist");
+        assert_eq!(
+            auth.providers
+                .get(OPENAI_PROVIDER)
+                .map(|entry| entry.key.as_str()),
+            Some("actual-key")
+        );
+    }
+
+    #[test]
+    fn write_and_read_auth_file_round_trip() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "saved-key".to_string(),
+            },
+        );
+
+        write_auth_file(&path, &auth).unwrap();
+        let read_back = read_auth_file(&path).unwrap();
+        let auth = read_back.expect("expected auth file to exist");
+        assert_eq!(
+            auth.providers
+                .get(OPENAI_PROVIDER)
+                .map(|entry| entry.key.as_str()),
+            Some("saved-key")
+        );
+    }
 }
