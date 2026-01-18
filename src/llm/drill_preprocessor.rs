@@ -7,7 +7,6 @@ use async_openai::config::OpenAIConfig;
 use super::prompt_user::{cloze_user_prompt, rephrase_user_prompt};
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::cloze_utils::find_cloze_ranges;
-use crate::utils::pluralize;
 
 use super::{ensure_client, request_cloze};
 
