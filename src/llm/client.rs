@@ -1,5 +1,5 @@
-use crate::llm::prompt_user::ask_yn;
 use crate::llm::secrets::API_KEY_ENV;
+use crate::utils::ask_yn;
 use anyhow::{Context, Result, anyhow, bail};
 
 use async_openai::{Client, config::OpenAIConfig};

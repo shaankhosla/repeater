@@ -1,8 +1,6 @@
 use crate::card::{Card, CardContent};
 use crate::palette::Palette;
 use crate::utils::pluralize_with;
-use dialoguer::Input;
-use dialoguer::theme::ColorfulTheme;
 
 pub fn rephrase_user_prompt(cards: &[Card], total_needing: usize) -> Option<String> {
     let mut sample_question: Option<String> = None;
@@ -30,25 +28,6 @@ fn rephrase_build_user_prompt(total: usize, sample_question: &str) -> String {
         Palette::dim("Example question:"),
         sample_question
     )
-}
-
-pub fn ask_yn(prompt: String, default: bool) -> bool {
-    let default_str = if default { "y" } else { "n" }.to_string();
-
-    loop {
-        let s: String = Input::with_theme(&ColorfulTheme::default())
-            .with_prompt(format!("{prompt} [y/n]"))
-            .default(default_str.clone())
-            .interact_text() // shows editable input with cursor, waits for Enter
-            .unwrap();
-
-        match s.trim().to_lowercase().as_str() {
-            "" => return default,
-            "y" | "yes" => return true,
-            "n" | "no" => return false,
-            _ => eprintln!("Please answer y or n."),
-        }
-    }
 }
 
 fn cloze_build_user_prompt(total_needing: usize, card_text: &str) -> String {
