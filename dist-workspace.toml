@@ -22,6 +22,3 @@ publish-jobs = ["homebrew", "npm"]
 # Whether to install an updater program
 install-updater = true
 
-[dist.dependencies.apt]
-libdbus-1-dev = "*"
-pkg-config = "*"

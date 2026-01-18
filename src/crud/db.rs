@@ -1,11 +1,10 @@
 use anyhow::Result;
-use directories::ProjectDirs;
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 use std::str::FromStr;
 
-use anyhow::anyhow;
+use crate::utils::get_data_dir;
 
 #[derive(Clone)]
 pub struct DB {
@@ -14,12 +13,7 @@ pub struct DB {
 
 impl DB {
     pub async fn new() -> Result<Self> {
-        let proj_dirs = ProjectDirs::from("", "", "repeater")
-            .ok_or_else(|| anyhow!("Could not determine project directory"))?;
-
-        let data_dir = proj_dirs.data_dir();
-        std::fs::create_dir_all(data_dir)?;
-
+        let data_dir = get_data_dir()?;
         let db_path = data_dir.join("cards.db");
 
         let options =

@@ -5,9 +5,9 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use dialoguer::{Password, theme::ColorfulTheme};
-use directories::ProjectDirs;
 use serde_json::{Value, json};
 
+use crate::utils::get_data_dir;
 use crate::{palette::Palette, utils::strip_controls_and_escapes};
 
 pub const API_KEY_ENV: &str = "REPEATER_OPENAI_API_KEY";
@@ -148,11 +148,7 @@ pub fn get_api_key_from_sources() -> Result<ApiKeyLookup> {
 }
 
 fn auth_file_path() -> Result<PathBuf> {
-    let proj_dirs = ProjectDirs::from("", "", "repeater")
-        .ok_or_else(|| anyhow::anyhow!("Could not determine project directory"))?;
-    let data_dir = proj_dirs.data_dir();
-    fs::create_dir_all(data_dir)
-        .with_context(|| format!("Failed to create data dir at {}", data_dir.display()))?;
+    let data_dir = get_data_dir()?;
     Ok(data_dir.join(AUTH_FILE_NAME))
 }
 
