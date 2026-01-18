@@ -32,8 +32,7 @@ async-openai = {version="0.32.3", features = ["responses", "model"]}
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
 reqwest = { version = "0.13", features = ["json"] }
 open = "5"
-rpassword = "7.4.0"
-dialoguer = "0.12.0"
+dialoguer = {version="0.12.0", features=["password"]}
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio" ] }

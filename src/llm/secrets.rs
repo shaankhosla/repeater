@@ -1,9 +1,9 @@
 use std::env;
 
-use crate::{palette::Palette, utils::strip_controls_and_escapes};
-use anyhow::{Context, Result, bail};
+use dialoguer::{Password, theme::ColorfulTheme};
 
-use rpassword::read_password;
+use crate::{palette::Palette, utils::strip_controls_and_escapes};
+use anyhow::{Result, bail};
 
 use keyring::{Entry, Error as KeyringError};
 
@@ -46,11 +46,14 @@ pub fn prompt_for_api_key(prompt: &str) -> Result<String> {
         "{}",
         Palette::dim("This feature is optional, leave the field blank to skip.")
     );
+    let raw_password = Password::with_theme(&ColorfulTheme::default())
+        .with_prompt("API Key")
+        .allow_empty_password(true)
+        .interact()
+        .unwrap();
 
-    let mut input = read_password().context("Failed to read API key")?;
-    // Make input safe for use in a header
-    input = strip_controls_and_escapes(&input);
-    Ok(input.trim().to_string())
+    let password = strip_controls_and_escapes(&raw_password);
+    Ok(password.trim().to_string())
 }
 
 #[derive(Debug)]

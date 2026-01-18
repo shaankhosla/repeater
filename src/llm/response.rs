@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use async_openai::{
     Client,
     config::OpenAIConfig,
@@ -30,7 +30,11 @@ pub async fn request_single_text_response(
         ])
         .build()?;
 
-    let response = client.responses().create(request).await?;
+    let response = client
+        .responses()
+        .create(request)
+        .await
+        .with_context(|| "Failed to get response from LLM")?;
 
     for item in response.output {
         if let OutputItem::Message(message) = item {
