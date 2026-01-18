@@ -64,8 +64,10 @@ pub fn strip_controls_and_escapes(input: &str) -> String {
 }
 
 pub fn ask_yn(prompt: String) -> bool {
+    println!("{}", prompt);
     Confirm::with_theme(&ColorfulTheme::default())
-        .with_prompt(prompt)
+        .with_prompt("Proceed? ")
+        .report(true)
         .wait_for_newline(true)
         .interact()
         .unwrap()

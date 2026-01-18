@@ -35,7 +35,7 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     if !prompted_for_key {
         let ok = ask_yn(user_prompt.to_string());
         if !ok {
-            bail!("Unable to proceed. Please consider using LLM to complete action.");
+            bail!("LLM client not initialized.");
         }
     }
 

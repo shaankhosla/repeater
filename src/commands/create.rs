@@ -1,6 +1,7 @@
 use crate::{
     card::CardType,
     crud::DB,
+    palette::Palette,
     parser::{cards_from_md, content_to_card},
     tui::Editor,
     tui::Theme,
@@ -43,8 +44,8 @@ pub async fn run(db: &DB, card_path: PathBuf) -> Result<()> {
     let file_exists = card_path.is_file();
     if !file_exists {
         let should_create = ask_yn(format!(
-            "Card '{}' does not exist. Create it?",
-            card_path.display()
+            "Card {} does not exist. Would you like to create it?",
+            Palette::paint(Palette::ACCENT, card_path.display())
         ));
         if !should_create {
             println!("Aborting; card not created.");

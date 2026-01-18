@@ -7,6 +7,7 @@ use async_openai::config::OpenAIConfig;
 use super::prompt_user::{cloze_user_prompt, rephrase_user_prompt};
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::cloze_utils::find_cloze_ranges;
+use crate::palette::Palette;
 
 use super::{ensure_client, request_cloze};
 
@@ -59,16 +60,40 @@ impl DrillPreprocessor {
 
         let client = match user_prompt {
             Some(prompt) => {
+                let cloze_file_list = if cards_needing_clozes > 0 {
+                    let mut paths: Vec<String> = cards
+                        .iter()
+                        .filter(|card| does_card_need_cloze(card))
+                        .map(|card| card.file_path.display().to_string())
+                        .collect();
+                    paths.sort();
+                    paths.dedup();
+                    if paths.is_empty() {
+                        None
+                    } else {
+                        Some(format!(
+                            "\nFiles with invalid clozes:\n{}",
+                            paths
+                                .iter()
+                                .map(|path| Palette::paint(Palette::ACCENT, path))
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        ))
+                    }
+                } else {
+                    None
+                };
+                let cloze_suffix = cloze_file_list.as_deref().unwrap_or("");
                 let error_message = match (cards_needing_rephrase, cards_needing_clozes) {
                     (0, cloze) => format!(
-                        "Failed to initialize LLM client, cannot synthesize Cloze deletions for {cloze} Cloze cards without brackets"
+                        "Couldn't autofix {cloze} Cloze cards which lacked brackets. Please fix manually or enable feature.{cloze_suffix}"
                     ),
-                    (rephrase, 0) => format!(
-                        "Failed to initialize LLM client, cannot rephrase {rephrase} questions"
-                    ),
-                    (rephrase, cloze) => format!(
-                        "Failed to initialize LLM client, cannot rephrase {rephrase} questions or synthesize Cloze deletions for {cloze} cards"
-                    ),
+                    (rephrase, 0) => format!("Cannot rephrase {rephrase} questions"),
+                    (rephrase, cloze) => {
+                        format!(
+                            "Cannot rephrase {rephrase} questions or autofix {cloze} cards. Please fix manually or enable feature.{cloze_suffix}"
+                        )
+                    }
                 };
                 Some(
                     ensure_client(&prompt)
