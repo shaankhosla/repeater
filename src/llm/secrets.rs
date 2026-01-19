@@ -1,39 +1,73 @@
+use std::collections::HashMap;
 use std::env;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
 use dialoguer::{Password, theme::ColorfulTheme};
+use serde::{Deserialize, Serialize};
 
+use crate::utils::get_data_dir;
+use crate::utils::trim_line;
 use crate::{palette::Palette, utils::strip_controls_and_escapes};
-use anyhow::{Result, bail};
-
-use keyring::{Entry, Error as KeyringError};
 
 pub const API_KEY_ENV: &str = "REPEATER_OPENAI_API_KEY";
 
-const SERVICE: &str = "com.repeater";
-const USERNAME: &str = "openai:default";
+const AUTH_FILE_NAME: &str = "auth.json";
+const OPENAI_PROVIDER: &str = "openai";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiKeySource {
     Environment,
-    Keyring,
+    AuthFile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct AuthFile {
+    #[serde(flatten)]
+    providers: HashMap<String, ProviderAuth>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProviderAuth {
+    key: String,
 }
 
 impl ApiKeySource {
     pub fn description(&self) -> &'static str {
         match self {
             ApiKeySource::Environment => "environment variable",
-            ApiKeySource::Keyring => "local keyring",
+            ApiKeySource::AuthFile => "local auth file",
         }
     }
 }
 
+#[cfg(test)]
+const TEST_AUTH_PATH_ENV: &str = "REPEATER_TEST_AUTH_PATH";
+
 pub fn clear_api_key() -> Result<bool> {
-    let entry = Entry::new(SERVICE, USERNAME)?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(true),
-        Err(KeyringError::NoEntry) => Ok(false),
-        Err(err) => bail!(err),
+    let auth_path = auth_file_path()?;
+    let Some(mut auth) = read_auth_file(&auth_path)? else {
+        return Ok(false);
+    };
+
+    if auth.providers.remove(OPENAI_PROVIDER).is_none() {
+        return Ok(false);
     }
+
+    if auth.providers.is_empty() {
+        fs::remove_file(&auth_path).with_context(|| {
+            format!(
+                "Failed to remove empty auth file at {}",
+                auth_path.display()
+            )
+        })?;
+        return Ok(true);
+    }
+
+    write_auth_file(&auth_path, &auth)?;
+    Ok(true)
 }
 
 pub fn prompt_for_api_key(prompt: &str) -> Result<String> {
@@ -60,22 +94,22 @@ pub fn prompt_for_api_key(prompt: &str) -> Result<String> {
 pub struct ApiKeyLookup {
     pub api_key: Option<String>,
     pub source: Option<ApiKeySource>,
-    pub keyring_entry: Option<Entry>,
 }
 
 pub fn store_api_key(api_key: &str) -> Result<()> {
-    let entry = Entry::new(SERVICE, USERNAME)?;
-    store_api_key_with_entry(entry, api_key)
-}
+    let trimmed = trim_line(api_key).with_context(|| "Cannot store an empty API key")?;
 
-pub fn store_api_key_with_entry(entry: Entry, api_key: &str) -> Result<()> {
-    let trimmed = api_key.trim();
-    if trimmed.is_empty() {
-        bail!("Cannot store an empty API key");
-    }
+    let auth_path = auth_file_path()?;
+    let mut auth = read_auth_file(&auth_path)?.unwrap_or_default();
 
-    entry.set_password(trimmed)?;
-    Ok(())
+    auth.providers.insert(
+        OPENAI_PROVIDER.to_string(),
+        ProviderAuth {
+            key: trimmed.to_string(),
+        },
+    );
+
+    write_auth_file(&auth_path, &auth)
 }
 
 pub fn get_api_key_from_sources() -> Result<ApiKeyLookup> {
@@ -86,23 +120,183 @@ pub fn get_api_key_from_sources() -> Result<ApiKeyLookup> {
         return Ok(ApiKeyLookup {
             api_key: Some(value),
             source: Some(ApiKeySource::Environment),
-            keyring_entry: None,
         });
     }
 
-    // 2. Keyring
-    let entry = Entry::new(SERVICE, USERNAME)?;
-    match entry.get_password() {
-        Ok(password) => Ok(ApiKeyLookup {
-            api_key: Some(password),
-            source: Some(ApiKeySource::Keyring),
-            keyring_entry: Some(entry),
-        }),
-        Err(KeyringError::NoEntry) => Ok(ApiKeyLookup {
+    // 2. Auth file
+    let auth_path = auth_file_path()?;
+    let Some(auth) = read_auth_file(&auth_path)? else {
+        return Ok(ApiKeyLookup {
             api_key: None,
             source: None,
-            keyring_entry: Some(entry),
-        }),
-        Err(err) => bail!(err),
+        });
+    };
+
+    let key = auth
+        .providers
+        .get(OPENAI_PROVIDER)
+        .map(|entry| entry.key.trim())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    if let Some(api_key) = key {
+        return Ok(ApiKeyLookup {
+            api_key: Some(api_key),
+            source: Some(ApiKeySource::AuthFile),
+        });
+    }
+
+    Ok(ApiKeyLookup {
+        api_key: None,
+        source: None,
+    })
+}
+
+fn auth_file_path() -> Result<PathBuf> {
+    #[cfg(test)]
+    {
+        if let Ok(path) = env::var(TEST_AUTH_PATH_ENV)
+            && !path.trim().is_empty()
+        {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
+    let data_dir = get_data_dir()?;
+    Ok(data_dir.join(AUTH_FILE_NAME))
+}
+
+fn read_auth_file(path: &Path) -> Result<Option<AuthFile>> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(parse_auth_contents(&contents, path)?),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(err) => {
+            Err(err).with_context(|| format!("Failed to read auth file at {}", path.display()))
+        }
+    }
+}
+
+fn write_auth_file(path: &Path, value: &AuthFile) -> Result<()> {
+    let contents = serialize_auth(value)?;
+    fs::write(path, contents)
+        .with_context(|| format!("Failed to write auth file at {}", path.display()))?;
+    Ok(())
+}
+
+fn parse_auth_contents(contents: &str, path: &Path) -> Result<Option<AuthFile>> {
+    if contents.trim().is_empty() {
+        return Ok(Some(AuthFile::default()));
+    }
+
+    let parsed: AuthFile = serde_json::from_str(contents)
+        .with_context(|| format!("Failed to parse auth file at {}", path.display()))?;
+    Ok(Some(parsed))
+}
+
+fn serialize_auth(value: &AuthFile) -> Result<String> {
+    let contents = serde_json::to_string_pretty(value)?;
+    Ok(format!("{}\n", contents))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_auth_contents_handles_empty() {
+        let path = Path::new("auth.json");
+        let parsed = parse_auth_contents("   \n", path).unwrap();
+        let auth = parsed.expect("expected auth file for empty contents");
+        assert!(auth.providers.is_empty());
+    }
+
+    #[test]
+    fn serialize_auth_adds_trailing_newline() {
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "test-key".to_string(),
+            },
+        );
+
+        let serialized = serialize_auth(&auth).unwrap();
+        assert!(serialized.ends_with('\n'));
+        let parsed: AuthFile = serde_json::from_str(serialized.trim()).unwrap();
+        assert_eq!(
+            parsed
+                .providers
+                .get(OPENAI_PROVIDER)
+                .map(|entry| entry.key.as_str()),
+            Some("test-key")
+        );
+    }
+    #[test]
+    fn file_doesnt_exist() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let unexisting_file_auth = read_auth_file(&path).unwrap();
+        assert!(unexisting_file_auth.is_none());
+    }
+
+    #[test]
+    fn overwrite() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+        store_api_key("fake_key").unwrap();
+        store_api_key("real_key").unwrap();
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert_eq!(api_key.api_key.unwrap(), "real_key");
+
+        let cleared = clear_api_key().unwrap();
+        assert!(cleared);
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.api_key.is_none());
+    }
+
+    #[test]
+    fn write_and_read_auth_file_round_trip() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let mut auth = AuthFile::default();
+        auth.providers.insert(
+            OPENAI_PROVIDER.to_string(),
+            ProviderAuth {
+                key: "saved-key".to_string(),
+            },
+        );
+
+        write_auth_file(&path, &auth).unwrap();
+        let read_back = read_auth_file(&path).unwrap();
+        let auth = read_back.expect("expected auth file to exist");
+        assert_eq!(
+            auth.providers
+                .get(OPENAI_PROVIDER)
+                .map(|entry| entry.key.as_str()),
+            Some("saved-key")
+        );
+    }
+
+    #[test]
+    fn load_key_without_store() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.api_key.is_none());
+
+        let cleared = clear_api_key().unwrap();
+        assert!(!cleared);
     }
 }

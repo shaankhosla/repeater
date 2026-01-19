@@ -4,10 +4,7 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use async_openai::{Client, config::OpenAIConfig};
 
-use super::secrets::{
-    ApiKeySource, get_api_key_from_sources, prompt_for_api_key, store_api_key,
-    store_api_key_with_entry,
-};
+use super::secrets::{ApiKeySource, get_api_key_from_sources, prompt_for_api_key, store_api_key};
 
 pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let lookup = get_api_key_from_sources()?;
@@ -22,11 +19,7 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
             );
         }
 
-        if let Some(entry) = lookup.keyring_entry {
-            store_api_key_with_entry(entry, &api_key)?;
-        } else {
-            store_api_key(&api_key)?;
-        }
+        store_api_key(&api_key)?;
 
         (api_key, true)
     };

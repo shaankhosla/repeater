@@ -1,7 +1,11 @@
 use std::path::Path;
 
+use anyhow::Result;
+
+use anyhow::anyhow;
 use dialoguer::Confirm;
 use dialoguer::theme::ColorfulTheme;
+use directories::ProjectDirs;
 
 pub fn is_markdown(path: &Path) -> bool {
     path.extension()
@@ -71,6 +75,16 @@ pub fn ask_yn(prompt: String) -> bool {
         .wait_for_newline(true)
         .interact()
         .unwrap()
+}
+
+pub fn get_data_dir() -> Result<std::path::PathBuf> {
+    let proj_dirs = ProjectDirs::from("", "", "repeater")
+        .ok_or_else(|| anyhow!("Could not determine project directory"))?;
+
+    let data_dir = proj_dirs.data_dir();
+    std::fs::create_dir_all(data_dir)?;
+
+    Ok(data_dir.to_path_buf())
 }
 
 #[cfg(test)]

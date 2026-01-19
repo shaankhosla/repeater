@@ -72,10 +72,10 @@ enum Command {
     },
     /// Manage LLM helper settings
     Llm {
-        /// Store a new API key in the local keyring
+        /// Store a new API key in the local auth file
         #[arg(long, value_name = "KEY", conflicts_with = "clear")]
         set: Option<String>,
-        /// Remove the stored API key from the keyring
+        /// Remove the stored API key from the local auth file
         #[arg(long, conflicts_with = "test")]
         clear: bool,
         /// Verify the configured API key by calling the OpenAI API
@@ -129,7 +129,7 @@ async fn handle_llm_command(set: Option<String>, clear: bool, test: bool) -> Res
 
     if let Some(key) = set {
         llm::store_api_key(&key)?;
-        println!("Stored OpenAI API key in the local keyring.");
+        println!("Stored OpenAI API key in the local auth file.");
         action_taken = true;
     }
 
@@ -138,7 +138,7 @@ async fn handle_llm_command(set: Option<String>, clear: bool, test: bool) -> Res
         if removed {
             println!("Removed the stored OpenAI API key.");
         } else {
-            println!("No OpenAI API key found in the keyring.");
+            println!("No OpenAI API key found in the auth file.");
         }
         action_taken = true;
     }
