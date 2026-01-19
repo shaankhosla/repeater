@@ -54,6 +54,9 @@ enum Command {
             value_hint = ValueHint::AnyPath
         )]
         paths: Vec<PathBuf>,
+        /// Print a plain summary instead of the TUI dashboard
+        #[arg(long, default_value_t = false)]
+        plain: bool,
     },
     /// Create or append to a card
     Create {
@@ -105,8 +108,8 @@ async fn run_cli() -> Result<()> {
         } => {
             drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions).await?;
         }
-        Command::Check { paths } => {
-            let _ = check::run(&db, paths).await?;
+        Command::Check { paths, plain } => {
+            let _ = check::run(&db, paths, plain).await?;
         }
         Command::Create { path } => {
             create::run(&db, path).await?;

@@ -1,9 +1,11 @@
 use crate::{
     check_version::{check_version, prompt_for_new_version},
     crud::DB,
+    palette::Palette,
     parser::{FileSearchStats, register_all_cards},
     stats::{CardLifeCycle, CardStats, Histogram},
     tui::Theme,
+    utils::pluralize,
 };
 
 use std::{
@@ -28,7 +30,7 @@ use ratatui::{
     widgets::{Bar, BarChart, BarGroup, Paragraph, Wrap},
 };
 
-pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
+pub async fn run(db: &DB, paths: Vec<PathBuf>, plain: bool) -> Result<usize> {
     let version_check = tokio::spawn(check_version(db.clone()));
 
     let (card_hashes, file_traversal_stats) = register_all_cards(db, paths).await?;
@@ -38,7 +40,11 @@ pub async fn run(db: &DB, paths: Vec<PathBuf>) -> Result<usize> {
         prompt_for_new_version(db, &notification).await;
     }
 
-    render_dashboard(&crud_stats, &file_traversal_stats)?;
+    if plain {
+        render_plain_summary(&crud_stats, &file_traversal_stats);
+    } else {
+        render_dashboard(&crud_stats, &file_traversal_stats)?;
+    }
     Ok(count)
 }
 
@@ -57,6 +63,195 @@ fn render_dashboard(crud_stats: &CardStats, file_traversal_stats: &FileSearchSta
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
     draw_result
+}
+
+fn render_plain_summary(crud_stats: &CardStats, file_traversal_stats: &FileSearchStats) {
+    println!("{}", Palette::paint(Palette::ACCENT, "Collection Summary"));
+    println!(
+        "{} {}",
+        Palette::dim("Cards found:"),
+        Palette::paint(Palette::INFO, crud_stats.num_cards)
+    );
+    println!(
+        "{} {} {} {} {} {}",
+        Palette::dim("New:"),
+        Palette::paint(
+            Palette::INFO,
+            *crud_stats
+                .card_lifecycles
+                .get(&CardLifeCycle::New)
+                .unwrap_or(&0)
+        ),
+        Palette::dim("Young:"),
+        Palette::paint(
+            Palette::INFO,
+            *crud_stats
+                .card_lifecycles
+                .get(&CardLifeCycle::Young)
+                .unwrap_or(&0)
+        ),
+        Palette::dim("Mature:"),
+        Palette::paint(
+            Palette::INFO,
+            *crud_stats
+                .card_lifecycles
+                .get(&CardLifeCycle::Mature)
+                .unwrap_or(&0)
+        )
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Files containing cards:"),
+        Palette::paint(Palette::INFO, crud_stats.file_paths.len())
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Markdowns parsed:"),
+        Palette::paint(Palette::INFO, file_traversal_stats.markdown_files)
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Files searched:"),
+        Palette::paint(Palette::INFO, file_traversal_stats.files_searched)
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Total cards indexed in DB:"),
+        Palette::paint(Palette::INFO, crud_stats.total_cards_in_db)
+    );
+
+    println!("\n{}", Palette::paint(Palette::ACCENT, "Due Status"));
+    let load_factor = if crud_stats.num_cards == 0 {
+        0.0
+    } else {
+        crud_stats.due_cards as f32 / crud_stats.num_cards as f32
+    };
+    let due_color = if crud_stats.due_cards > 0 {
+        Palette::WARNING
+    } else {
+        Palette::SUCCESS
+    };
+    let upcoming_week_total: usize = crud_stats.upcoming_week.values().sum();
+    println!(
+        "{} {}",
+        Palette::dim("Due load:"),
+        Palette::paint(due_color, format!("{:.0}%", load_factor * 100.0))
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Due now:"),
+        Palette::paint(due_color, crud_stats.due_cards)
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Next 7 days:"),
+        Palette::paint(Palette::INFO, upcoming_week_total)
+    );
+    println!(
+        "{} {}",
+        Palette::dim("Next 30 days:"),
+        Palette::paint(Palette::INFO, crud_stats.upcoming_month)
+    );
+
+    println!(
+        "\n{}",
+        Palette::paint(Palette::ACCENT, "Next 7 Days Histogram")
+    );
+    if crud_stats.upcoming_week.is_empty() {
+        println!("{}", Palette::dim("You're clear for the next 7 days."));
+    } else {
+        let max_count = crud_stats
+            .upcoming_week
+            .values()
+            .max()
+            .copied()
+            .unwrap_or(0);
+        for (day, count) in &crud_stats.upcoming_week {
+            let label = format_upcoming_label(day);
+            println!(
+                "{} {}",
+                Palette::dim(format!("{label}:")),
+                format_bar(*count, max_count)
+            );
+        }
+    }
+
+    println!(
+        "\n{}",
+        Palette::paint(Palette::ACCENT, "FSRS Memory Health")
+    );
+    if crud_stats.retrievability_histogram.mean().is_none()
+        || crud_stats.difficulty_histogram.mean().is_none()
+    {
+        println!("{}", Palette::dim("No FSRS statistics to display"));
+    } else {
+        render_plain_histogram(
+            "Difficulty",
+            "The higher the difficulty, the slower stability will increase.",
+            &crud_stats.difficulty_histogram,
+        );
+        render_plain_histogram(
+            "Retrievability",
+            "The probability of recalling a card today.",
+            &crud_stats.retrievability_histogram,
+        );
+    }
+    println!(
+        "\n{} {}",
+        Palette::dim("Snapshot covers"),
+        Palette::paint(
+            Palette::INFO,
+            pluralize("card", crud_stats.num_cards as usize)
+        )
+    );
+    println!("{}", Palette::dim("Rerun command anytime to refresh data"));
+}
+
+fn render_plain_histogram(label: &str, description: &str, stats: &Histogram<5>) {
+    println!(
+        "{} {}",
+        Palette::dim("Card"),
+        Palette::paint(Palette::ACCENT, label)
+    );
+    println!("{}", Palette::dim(description));
+    let average = stats
+        .mean()
+        .map(|v| format!("{}%", (v * 100.0).round()))
+        .unwrap_or_else(|| String::from("NA - No cards reviewed"));
+    println!(
+        "{} {}",
+        Palette::dim("Average:"),
+        Palette::paint(Palette::INFO, average)
+    );
+
+    let max_bin = stats.bins.iter().copied().max().unwrap_or(0);
+    let step_size = 100 / stats.bins.len().max(1);
+    for (idx, count) in stats.bins.iter().enumerate() {
+        let min_thresh = step_size * idx;
+        let label = format!("{}%-{}%", min_thresh, min_thresh + step_size);
+        println!(
+            "{} {}",
+            Palette::dim(format!("{label}:")),
+            format_bar(*count as usize, max_bin as usize)
+        );
+    }
+}
+
+fn format_bar(count: usize, max: usize) -> String {
+    let width = 20usize;
+    let filled = if max == 0 {
+        0
+    } else {
+        ((count as f64 / max as f64) * width as f64).round() as usize
+    };
+    let clamped = filled.min(width);
+    let bar = "#".repeat(clamped);
+    let remainder = "-".repeat(width - clamped);
+    format!(
+        "{} {}",
+        Palette::paint(Palette::INFO, bar + &remainder),
+        Palette::dim(pluralize("card", count))
+    )
 }
 
 fn dashboard_loop(
