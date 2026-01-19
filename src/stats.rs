@@ -133,7 +133,7 @@ mod tests {
     use chrono::{Duration, Utc};
     use std::path::PathBuf;
 
-    pub fn sample_card(path: &str) -> Card {
+    fn sample_card(path: &str) -> Card {
         Card::new(
             PathBuf::from(path),
             (0, 1),

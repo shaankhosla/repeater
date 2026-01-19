@@ -41,6 +41,8 @@ repeater create cards/neuro.md
 
 Re-index the referenced decks and open the interactive dashboard with totals for new, due, overdue, and upcoming cards (press `Esc`/`Ctrl+C` to exit).
 
+- `--plain`: print a plain-text summary to stdout instead of launching the dashboard.
+
 Example:
 
 ```sh

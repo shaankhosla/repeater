@@ -40,4 +40,4 @@
    repeater check cards
    ```
 
-   This launches the full-screen dashboard that shows totals, due/overdue cards, and upcoming workload; press `Esc` or `Ctrl+C` when you want to exit.
+   This launches the full-screen dashboard that shows totals, due/overdue cards, and upcoming workload; press `Esc` or `Ctrl+C` when you want to exit. Use `--plain` if you prefer a plain-text summary for scripts.
