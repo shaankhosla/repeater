@@ -43,6 +43,9 @@ impl ApiKeySource {
     }
 }
 
+#[cfg(test)]
+const TEST_AUTH_PATH_ENV: &str = "REPEATER_TEST_AUTH_PATH";
+
 pub fn clear_api_key() -> Result<bool> {
     let auth_path = auth_file_path()?;
     let Some(mut auth) = read_auth_file(&auth_path)? else {
@@ -150,6 +153,15 @@ pub fn get_api_key_from_sources() -> Result<ApiKeyLookup> {
 }
 
 fn auth_file_path() -> Result<PathBuf> {
+    #[cfg(test)]
+    {
+        if let Ok(path) = env::var(TEST_AUTH_PATH_ENV)
+            && !path.trim().is_empty()
+        {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
     let data_dir = get_data_dir()?;
     Ok(data_dir.join(AUTH_FILE_NAME))
 }
@@ -231,34 +243,22 @@ mod tests {
     #[test]
     fn overwrite() {
         let dir = tempdir().unwrap();
-        let auth_path = dir.path().join("auth.json");
+        let path = dir.path().join("auth.json");
 
-        let mut auth = AuthFile::default();
-        auth.providers.insert(
-            OPENAI_PROVIDER.to_string(),
-            ProviderAuth {
-                key: "fake-key".to_string(),
-            },
-        );
-        write_auth_file(&auth_path, &auth).unwrap();
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+        store_api_key("fake_key").unwrap();
+        store_api_key("real_key").unwrap();
 
-        let mut auth = AuthFile::default();
-        auth.providers.insert(
-            OPENAI_PROVIDER.to_string(),
-            ProviderAuth {
-                key: "actual-key".to_string(),
-            },
-        );
+        let api_key = get_api_key_from_sources().unwrap();
+        assert_eq!(api_key.api_key.unwrap(), "real_key");
 
-        write_auth_file(&auth_path, &auth).unwrap();
-        let read_back = read_auth_file(&auth_path).unwrap();
-        let auth = read_back.expect("expected auth file to exist");
-        assert_eq!(
-            auth.providers
-                .get(OPENAI_PROVIDER)
-                .map(|entry| entry.key.as_str()),
-            Some("actual-key")
-        );
+        let cleared = clear_api_key().unwrap();
+        assert!(cleared);
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.api_key.is_none());
     }
 
     #[test]
@@ -282,5 +282,21 @@ mod tests {
                 .map(|entry| entry.key.as_str()),
             Some("saved-key")
         );
+    }
+
+    #[test]
+    fn load_key_without_store() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.api_key.is_none());
+
+        let cleared = clear_api_key().unwrap();
+        assert!(!cleared);
     }
 }
