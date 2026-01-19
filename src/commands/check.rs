@@ -611,7 +611,10 @@ fn help_panel(stats: &CardStats) -> Paragraph<'static> {
 
 #[cfg(test)]
 mod tests {
-    use super::format_upcoming_label;
+    use crate::parser::FileSearchStats;
+    use crate::stats::CardStats;
+
+    use super::{format_upcoming_label, render_plain_summary};
 
     #[test]
     fn format_upcoming_label_pretty_prints_dates() {
@@ -624,5 +627,11 @@ mod tests {
             format_upcoming_label("not-a-date"),
             "not-a-date".to_string()
         );
+    }
+    #[test]
+    fn test_plain_summary() {
+        let crud_stats = CardStats::default();
+        let file_traversal_stats = FileSearchStats::default();
+        render_plain_summary(&crud_stats, &file_traversal_stats);
     }
 }
