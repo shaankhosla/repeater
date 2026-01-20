@@ -7,6 +7,7 @@ Start a terminal drilling session for one or more files/directories (default: cu
 - `--card-limit <N>`: cap the number of cards reviewed this session.
 - `--new-card-limit <N>`: cap the number of unseen cards introduced.
 - `--rephrase`: rephrase basic questions via the LLM helper before the session starts.
+- `--shuffle`: randomize the order of cards in the session.
 
 Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards.
 
