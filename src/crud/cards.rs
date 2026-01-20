@@ -97,7 +97,7 @@ impl DB {
             None => chrono::Utc::now(),
         };
 
-        let new_performance = update_performance(current_performance, review_status, now);
+        let new_performance = update_performance(current_performance, review_status, now)?;
 
         let interval_days = new_performance.interval_days as i64;
         let review_count = new_performance.review_count as i64;
@@ -299,13 +299,13 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 4);
-                assert_eq!(reviewed.interval_raw, 6.0);
+                assert_eq!(reviewed.interval_raw, 7.0);
             }
             _ => panic!(),
         }
 
         // now collapse it with a failure
-        future_time += chrono::Duration::days(6);
+        future_time += chrono::Duration::days(7);
         db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
             .await
             .unwrap();
@@ -313,7 +313,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 5);
-                assert_eq!(reviewed.interval_raw, 2.0);
+                assert_eq!(reviewed.interval_raw, 1.0);
             }
             _ => panic!(),
         }
