@@ -101,15 +101,15 @@ pub fn update_performance(
     let next_state = next_state_for_review(next_states, review_status);
 
     let interval_raw = next_state.interval as f64;
-    let interval_rounded = interval_raw.round();
-    let fsrs_duration = Duration::days(interval_rounded as i64);
+    let fsrs_seconds = (interval_raw * SECONDS_PER_DAY).round().max(1.0) as i64;
+    let fsrs_duration = Duration::seconds(fsrs_seconds);
 
     let interval_duration = early_interval_cap(review_count, review_status)
         .map(|cap| fsrs_duration.min(cap))
         .unwrap_or(fsrs_duration);
 
     let interval_effective_days = interval_duration.num_seconds() as f64 / SECONDS_PER_DAY;
-    let interval_days = interval_duration.num_days().max(1) as usize;
+    let interval_days = interval_duration.num_days().max(0) as usize;
     let due_date = reviewed_at + interval_duration;
 
     Ok(ReviewedPerformance {
@@ -135,12 +135,13 @@ mod tests {
         assert_eq!(result.last_reviewed_at, reviewed_at);
         assert!(result.stability.is_finite());
         assert!(result.difficulty.is_finite());
-        assert!(result.interval_days >= 1);
+        assert!(result.interval_days == 0);
+        assert_eq!(result.interval_raw, 0.0006944444444444445);
         assert_eq!(result.review_count, 1);
     }
 
     #[test]
-    fn test_update_already_reviewed_card() {
+    fn test_short_term_learning() {
         let now = chrono::Utc::now();
         let duration = Duration::days(3);
         let last_reviewed_at = now - duration;
@@ -150,14 +151,14 @@ mod tests {
             difficulty: 5.0,
             interval_raw: 3.0,
             interval_days: 3,
-            due_date: now + duration,
+            due_date: now,
             review_count: 1,
         };
         let result =
             update_performance(Performance::Reviewed(initial_perf), ReviewStatus::Pass, now)
                 .unwrap();
         assert_eq!(result.last_reviewed_at, now);
-        assert!(result.interval_days >= 1);
+        assert!(result.interval_days == 0);
         assert_eq!(result.review_count, 2);
     }
 
@@ -171,12 +172,12 @@ mod tests {
             interval_raw: 4.0,
             interval_days: 4,
             due_date: now + Duration::days(4),
-            review_count: 2,
+            review_count: 3,
         };
         let result =
             update_performance(Performance::Reviewed(initial_perf), ReviewStatus::Fail, now)
                 .unwrap();
-        assert!(result.interval_days >= 1);
-        assert_eq!(result.review_count, 3);
+        assert_eq!(result.interval_raw, 0.7213425925925926);
+        assert_eq!(result.review_count, 4);
     }
 }

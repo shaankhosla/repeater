@@ -299,7 +299,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 4);
-                assert_eq!(reviewed.interval_raw, 7.0);
+                assert_eq!(reviewed.interval_raw, 7.32306712962963);
             }
             _ => panic!(),
         }
@@ -313,7 +313,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 5);
-                assert_eq!(reviewed.interval_raw, 32.0);
+                assert_eq!(reviewed.interval_raw, 31.727581018518517);
             }
             _ => panic!(),
         }
@@ -327,7 +327,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 6);
-                assert_eq!(reviewed.interval_raw, 2.0);
+                assert_eq!(reviewed.interval_raw, 2.486076388888889);
             }
             _ => panic!(),
         }
@@ -341,7 +341,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 7);
-                assert_eq!(reviewed.interval_raw, 1.0);
+                assert_eq!(reviewed.interval_raw, 0.5536689814814815);
             }
             _ => panic!(),
         }
