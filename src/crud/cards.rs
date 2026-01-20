@@ -97,7 +97,7 @@ impl DB {
             None => chrono::Utc::now(),
         };
 
-        let new_performance = update_performance(current_performance, review_status, now);
+        let new_performance = update_performance(current_performance, review_status, now)?;
 
         let interval_days = new_performance.interval_days as i64;
         let review_count = new_performance.review_count as i64;
@@ -299,21 +299,38 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 4);
-                assert_eq!(reviewed.interval_raw, 6.0);
+                assert_eq!(reviewed.interval_raw, 7.32306712962963);
+                assert_eq!(reviewed.interval_days, 7);
             }
             _ => panic!(),
         }
 
-        // now collapse it with a failure
-        future_time += chrono::Duration::days(6);
-        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+        // wait the interval and then pass again
+        future_time += chrono::Duration::days(7);
+        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time))
             .await
             .unwrap();
 
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 5);
-                assert_eq!(reviewed.interval_raw, 2.0);
+                assert_eq!(reviewed.interval_raw, 31.727581018518517);
+                assert_eq!(reviewed.interval_days, 31);
+            }
+            _ => panic!(),
+        }
+
+        // now collapse it with a failure
+        future_time += chrono::Duration::days(31);
+        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+            .await
+            .unwrap();
+
+        match db.get_card_performance(&card).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 6);
+                assert_eq!(reviewed.interval_raw, 2.5044675925925928);
+                assert_eq!(reviewed.interval_days, 2);
             }
             _ => panic!(),
         }
@@ -326,8 +343,8 @@ mod tests {
 
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
-                assert_eq!(reviewed.review_count, 6);
-                assert_eq!(reviewed.interval_raw, 1.0);
+                assert_eq!(reviewed.review_count, 7);
+                assert_eq!(reviewed.interval_raw, 0.5897800925925926);
             }
             _ => panic!(),
         }

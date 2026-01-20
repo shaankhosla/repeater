@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use crate::card::Card;
 use crate::crud::stats::CardStatsRow;
-use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, calculate_recall};
+use crate::fsrs::LEARN_AHEAD_THRESHOLD_MINS;
+use fsrs::{FSRS6_DEFAULT_DECAY, MemoryState, current_retrievability};
 
 #[derive(Debug, Default)]
 pub struct CardStats {
@@ -121,7 +122,14 @@ impl CardStats {
 
         let elapsed_days =
             now.signed_duration_since(last_reviewed_at).num_seconds() as f64 / 86_400.0;
-        let retrievabiliity = calculate_recall(elapsed_days.max(0.0), stability);
+        let retrievabiliity = current_retrievability(
+            MemoryState {
+                stability: stability as f32,
+                difficulty: difficulty as f32,
+            },
+            elapsed_days.max(0.0) as f32,
+            FSRS6_DEFAULT_DECAY,
+        ) as f64;
         self.retrievability_histogram.update(retrievabiliity);
     }
 }
@@ -206,7 +214,14 @@ mod tests {
 
         stats.update(&card, &row);
 
-        let recall = calculate_recall(4.0, 5.0);
+        let recall = current_retrievability(
+            MemoryState {
+                stability: 5.0,
+                difficulty: 5.0,
+            },
+            4.0,
+            FSRS6_DEFAULT_DECAY,
+        ) as f64;
         let idx = ((recall.clamp(0.0, 1.0) * 5.0) as usize).min(4);
         assert_eq!(stats.retrievability_histogram.bins[idx], 1);
     }
