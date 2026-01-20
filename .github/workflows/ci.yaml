@@ -40,8 +40,8 @@ jobs:
           args: -v .
           fail: true
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Check typos
-        uses: crate-ci/typos@30845ec8ccf7d80ed7a18d94f1fc0658a911ac6b 
+      - name: Spell Check Repo
+        uses: crate-ci/typos@v1.42.1
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
