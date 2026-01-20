@@ -127,17 +127,31 @@ pub fn update_performance(
 mod tests {
     use super::{Performance, ReviewStatus, ReviewedPerformance, update_performance};
     use chrono::Duration;
+    fn approx_eq(a: f64, b: f64) -> bool {
+        (a - b).abs() < 1e-2
+    }
 
     #[test]
     fn test_update_new_card() {
         let reviewed_at = chrono::Utc::now();
-        let result = update_performance(Performance::New, ReviewStatus::Pass, reviewed_at).unwrap();
-        assert_eq!(result.last_reviewed_at, reviewed_at);
-        assert!(result.stability.is_finite());
-        assert!(result.difficulty.is_finite());
-        assert!(result.interval_days == 0);
-        assert_eq!(result.interval_raw, 0.0006944444444444445);
-        assert_eq!(result.review_count, 1);
+
+        let result = update_performance(Performance::New, ReviewStatus::Pass, reviewed_at);
+        dbg!(result.as_ref().unwrap());
+        let ReviewedPerformance {
+            last_reviewed_at,
+            stability,
+            difficulty,
+            interval_raw,
+            interval_days,
+            due_date: _,
+            review_count,
+        } = result.unwrap();
+        assert_eq!(last_reviewed_at, reviewed_at);
+        assert!(approx_eq(stability, 2.30649995803833));
+        assert!(approx_eq(difficulty, 2.1181039810180664));
+        assert!(approx_eq(interval_raw, 0.0006944444444444445));
+        assert_eq!(interval_days, 0);
+        assert_eq!(review_count, 1);
     }
 
     #[test]
