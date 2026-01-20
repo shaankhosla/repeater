@@ -19,6 +19,21 @@ Cards live in everyday Markdown. `repeater` scans for tagged sections and turns 
   A: The proportionality constant of the electric force.
   ```
 
+  Multi-line basic:
+
+  ```markdown
+  Q: List the SI base units.
+  A: meter (m)
+  kilogram (kg)
+  second (s)
+  ```
+
+  Single-line variant:
+
+  ```markdown
+  What is Coulomb's constant?::The proportionality constant of the electric force.
+  ```
+
 - **Cloze cards**
 
   ```markdown
@@ -27,7 +42,8 @@ Cards live in everyday Markdown. `repeater` scans for tagged sections and turns 
 
 ## Parsing Logic
 
-- Cards are detected by the presence of a `Q:/A:` or `C:` block. A horizontal rule (`---`) or the start of another card marks the end.
+- Cards are detected by the presence of `Q:/A:`, `C:`, or `::`. A horizontal rule (`---`) or the start of another card marks the end.
+- Lines with `::` are treated as single-line basic cards (left side = question, right side = answer).
 - Each card gets a hash (think fingerprint) built from its letters, numbers, and any `+`/`-` signs. Punctuation, spacing, and capitalization are ignored, so only meaningful text changes create a new history.
 - Metadata lives in `cards.db` under your OS data directory (for example, `~/Library/Application Support/repeater/cards.db` on macOS). Delete this file to reset history; the Markdown decks remain untouched.
 - Multi-line content is supported.
@@ -55,6 +71,10 @@ Cards live in everyday Markdown. `repeater` scans for tagged sections and turns 
   ```markdown
   Q: What is ATP?
   ---  ← rejected; no answer was captured
+  ```
+- **Single-line cards require both sides.** Blank answers are rejected.
+  ```markdown
+  What is ATP?::
   ```
 - **Cloze blocks need real `[hidden]` text.** Empty brackets or unmatched `[`/`]` abort parsing.
   ```markdown
