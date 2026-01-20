@@ -41,7 +41,7 @@ jobs:
           fail: true
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Check typos
-        uses: crate-ci/typos
+        uses: crate-ci/typos@30845ec8ccf7d80ed7a18d94f1fc0658a911ac6b 
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
