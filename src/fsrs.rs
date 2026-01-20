@@ -3,8 +3,6 @@ use chrono::{DateTime, Duration, Utc};
 use fsrs::{DEFAULT_PARAMETERS, FSRS, MemoryState};
 
 const DESIRED_RETENTION: f32 = 0.9;
-const MAX_INTERVAL_DAYS: f64 = 256.0;
-const MIN_INTERVAL_DAYS: f64 = 1.0;
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
 pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
@@ -104,8 +102,7 @@ pub fn update_performance(
 
     let interval_raw = next_state.interval as f64;
     let interval_rounded = interval_raw.round();
-    let interval_clamped = interval_rounded.clamp(MIN_INTERVAL_DAYS, MAX_INTERVAL_DAYS);
-    let fsrs_duration = Duration::days(interval_clamped as i64);
+    let fsrs_duration = Duration::days(interval_rounded as i64);
 
     let interval_duration = early_interval_cap(review_count, review_status)
         .map(|cap| fsrs_duration.min(cap))

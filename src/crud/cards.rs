@@ -327,7 +327,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 6);
-                assert_eq!(reviewed.interval_raw, 1.0);
+                assert_eq!(reviewed.interval_raw, 0.0);
             }
             _ => panic!(),
         }
