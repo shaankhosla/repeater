@@ -86,6 +86,16 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
             continue;
         }
 
+        if let Some((left, right)) = line.split_once("::") {
+            if let Some(left) = trim_line(left)
+                && let Some(right) = trim_line(right)
+            {
+                question_lines.push(left);
+                answer_lines.push(right);
+            }
+            break;
+        }
+
         match section {
             Section::Question => question_lines.push(line),
             Section::Answer => answer_lines.push(line),
@@ -194,6 +204,12 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
                 buffer.clear();
             }
             start_idx = line_idx;
+        }
+        if line.contains("::") {
+            cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
+            buffer.clear();
+            track_buffer = false;
+            cards.push(content_to_card(path, &line, line_idx, line_idx)?);
         }
         if line.starts_with("---") && trim_line(&buffer).is_some() {
             cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
@@ -379,7 +395,7 @@ mod tests {
         let card_path = PathBuf::from("test_data/test.md");
         let cards = cards_from_md(&card_path).expect("should be ok");
 
-        assert_eq!(cards.len(), 9);
+        assert_eq!(cards.len(), 10);
     }
 
     #[tokio::test]
@@ -389,7 +405,7 @@ mod tests {
             .expect("Failed to connect to or initialize database");
         let dir_path = PathBuf::from("test_data");
         let (cards, stats) = register_all_cards(&db, vec![dir_path]).await.unwrap();
-        assert_eq!(cards.len(), 11);
+        assert_eq!(cards.len(), 12);
         for card in cards.values() {
             assert!(card.file_path.to_string_lossy().contains("test_data"));
         }
@@ -402,7 +418,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(cards.len(), 11);
+        assert_eq!(cards.len(), 12);
     }
 
     #[test]
@@ -468,6 +484,21 @@ mod tests {
         let content = "   \n  \n  ";
         let result = content_to_card(&card_path, content, 0, 1);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_single_line_remnote() {
+        let card_path = PathBuf::from("test.md");
+        let card = content_to_card(&card_path, "what is this::remnote  \n", 0, 1).unwrap();
+        if let CardContent::Basic { question, answer } = &card.content {
+            assert_eq!(question, "what is this");
+            assert_eq!(answer, "remnote");
+        } else {
+            panic!("Expected CardContent::Basic");
+        }
+
+        let card = content_to_card(&card_path, "what is this::\n", 0, 1);
+        assert!(card.is_err());
     }
 
     #[tokio::test]
