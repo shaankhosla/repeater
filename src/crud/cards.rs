@@ -300,6 +300,7 @@ mod tests {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 4);
                 assert_eq!(reviewed.interval_raw, 7.32306712962963);
+                assert_eq!(reviewed.interval_days, 7);
             }
             _ => panic!(),
         }
@@ -314,12 +315,13 @@ mod tests {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 5);
                 assert_eq!(reviewed.interval_raw, 31.727581018518517);
+                assert_eq!(reviewed.interval_days, 31);
             }
             _ => panic!(),
         }
 
         // now collapse it with a failure
-        future_time += chrono::Duration::days(29);
+        future_time += chrono::Duration::days(31);
         db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
             .await
             .unwrap();
@@ -327,13 +329,14 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 6);
-                assert_eq!(reviewed.interval_raw, 2.486076388888889);
+                assert_eq!(reviewed.interval_raw, 2.5044675925925928);
+                assert_eq!(reviewed.interval_days, 2);
             }
             _ => panic!(),
         }
 
         // another failure
-        future_time += chrono::Duration::days(1);
+        future_time += chrono::Duration::days(2);
         db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
             .await
             .unwrap();
@@ -341,7 +344,7 @@ mod tests {
         match db.get_card_performance(&card).await.unwrap() {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 7);
-                assert_eq!(reviewed.interval_raw, 0.5536689814814815);
+                assert_eq!(reviewed.interval_raw, 0.5897800925925926);
             }
             _ => panic!(),
         }
