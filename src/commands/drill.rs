@@ -41,11 +41,17 @@ pub async fn run(
     card_limit: Option<usize>,
     new_card_limit: Option<usize>,
     rephrase_questions: bool,
+    shuffle: bool,
 ) -> Result<()> {
     let (hash_cards, _) = register_all_cards(db, paths).await?;
     let mut cards_due_today = db
         .due_today(&hash_cards, card_limit, new_card_limit)
         .await?;
+
+    if shuffle {
+        use rand::seq::SliceRandom;
+        cards_due_today.shuffle(&mut rand::rng());
+    }
 
     if cards_due_today.is_empty() {
         println!("All caught up—no cards due today.");

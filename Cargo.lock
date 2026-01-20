@@ -2840,6 +2840,7 @@ dependencies = [
  "open",
  "proptest",
  "pulldown-cmark",
+ "rand 0.9.2",
  "ratatui",
  "regex",
  "reqwest 0.13.1",
