@@ -40,6 +40,8 @@ jobs:
           args: -v .
           fail: true
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check typos
+        uses: crate-ci/typos
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
