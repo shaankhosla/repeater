@@ -103,7 +103,6 @@ impl CardStats {
                     *self.upcoming_week.entry(day).or_insert(0) += 1;
                     self.upcoming_month += 1;
                 } else {
-                    // Track earliest future due date
                     match self.next_due_date {
                         None => self.next_due_date = Some(due_date),
                         Some(current_min) if due_date < current_min => {
