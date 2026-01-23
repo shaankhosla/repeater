@@ -16,7 +16,7 @@ use std::{
 };
 
 use anyhow::Result;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
@@ -152,6 +152,15 @@ fn render_plain_summary(crud_stats: &CardStats, file_traversal_stats: &FileSearc
         Palette::dim("Next 30 days:"),
         Palette::paint(Palette::INFO, crud_stats.upcoming_month)
     );
+    if crud_stats.due_cards == 0
+        && let Some(next_due) = &crud_stats.next_due_date
+    {
+        println!(
+            "{} {}",
+            Palette::dim("Next due:"),
+            Palette::paint(Palette::INFO, format_next_due(next_due))
+        );
+    }
 
     println!(
         "\n{}",
@@ -254,6 +263,22 @@ fn format_bar(count: usize, max: usize) -> String {
     )
 }
 
+fn format_next_due(due_date: &DateTime<Utc>) -> String {
+    let local_time = due_date.with_timezone(&chrono::Local);
+    let now = Utc::now();
+    let duration = due_date.signed_duration_since(now);
+
+    let relative = if duration.num_days() >= 1 {
+        format!("in {} days", duration.num_days())
+    } else if duration.num_hours() >= 1 {
+        format!("in {} hours", duration.num_hours())
+    } else {
+        format!("in {} min", duration.num_minutes().max(1))
+    };
+
+    format!("{} ({})", local_time.format("%Y-%m-%d %H:%M"), relative)
+}
+
 fn dashboard_loop(
     terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
     crud_stats: &CardStats,
@@ -289,7 +314,7 @@ fn draw_dashboard(
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(7),
+            Constraint::Length(8),
             Constraint::Min(6),
             Constraint::Length(3),
         ])
@@ -395,7 +420,7 @@ fn due_panel(stats: &CardStats) -> Paragraph<'static> {
         Theme::emphasis()
     };
     let upcoming_week_total: usize = stats.upcoming_week.values().sum();
-    let lines = vec![
+    let mut lines = vec![
         Line::from(vec![Span::styled("Focus", emphasis)]),
         Line::from(vec![
             Theme::span("Due load"),
@@ -417,6 +442,15 @@ fn due_panel(stats: &CardStats) -> Paragraph<'static> {
             Theme::label_span(format!("{}", stats.upcoming_month)),
         ]),
     ];
+    if stats.due_cards == 0
+        && let Some(next_due) = &stats.next_due_date
+    {
+        lines.push(Line::from(vec![
+            Theme::span("Next due"),
+            Theme::bullet(),
+            Theme::label_span(format_next_due(next_due)),
+        ]));
+    }
     Paragraph::new(lines).block(Theme::panel("Due Status"))
 }
 

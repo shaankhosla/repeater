@@ -15,6 +15,7 @@ pub struct CardStats {
     pub due_cards: i64,
     pub upcoming_week: BTreeMap<String, usize>,
     pub upcoming_month: i64,
+    pub next_due_date: Option<chrono::DateTime<chrono::Utc>>,
     pub file_paths: HashMap<PathBuf, usize>,
     pub difficulty_histogram: Histogram<5>,
     pub retrievability_histogram: Histogram<5>,
@@ -102,6 +103,14 @@ impl CardStats {
                     *self.upcoming_week.entry(day).or_insert(0) += 1;
                     self.upcoming_month += 1;
                 } else {
+                    match self.next_due_date {
+                        None => self.next_due_date = Some(due_date),
+                        Some(current_min) if due_date < current_min => {
+                            self.next_due_date = Some(due_date);
+                        }
+                        _ => {}
+                    }
+
                     if due_date <= week_horizon {
                         let day = due_date.format("%Y-%m-%d").to_string();
                         *self.upcoming_week.entry(day).or_insert(0) += 1;
