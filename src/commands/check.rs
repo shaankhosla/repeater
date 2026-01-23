@@ -152,14 +152,12 @@ fn render_plain_summary(crud_stats: &CardStats, file_traversal_stats: &FileSearc
         Palette::dim("Next 30 days:"),
         Palette::paint(Palette::INFO, crud_stats.upcoming_month)
     );
-    if crud_stats.due_cards == 0 {
-        if let Some(next_due) = &crud_stats.next_due_date {
-            println!(
-                "{} {}",
-                Palette::dim("Next due:"),
-                Palette::paint(Palette::INFO, format_next_due(next_due))
-            );
-        }
+    if crud_stats.due_cards == 0 && let Some(next_due) = &crud_stats.next_due_date {
+        println!(
+            "{} {}",
+            Palette::dim("Next due:"),
+            Palette::paint(Palette::INFO, format_next_due(next_due))
+        );
     }
 
     println!(
@@ -442,14 +440,12 @@ fn due_panel(stats: &CardStats) -> Paragraph<'static> {
             Theme::label_span(format!("{}", stats.upcoming_month)),
         ]),
     ];
-    if stats.due_cards == 0 {
-        if let Some(next_due) = &stats.next_due_date {
-            lines.push(Line::from(vec![
-                Theme::span("Next due"),
-                Theme::bullet(),
-                Theme::label_span(format_next_due(next_due)),
-            ]));
-        }
+    if stats.due_cards == 0 && let Some(next_due) = &stats.next_due_date {
+        lines.push(Line::from(vec![
+            Theme::span("Next due"),
+            Theme::bullet(),
+            Theme::label_span(format_next_due(next_due)),
+        ]));
     }
     Paragraph::new(lines).block(Theme::panel("Due Status"))
 }
