@@ -9,3 +9,4 @@ docs/book/
 !docs/**/*.md
 .env
 .idea/
+.lycheecache

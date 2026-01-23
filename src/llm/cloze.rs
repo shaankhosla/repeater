@@ -15,7 +15,7 @@ const USER_PROMPT_HEADER: &str = r#"
 Turn the following text into a Cloze card by inserting [] around the hidden portion.
 Return the exact same text as below, but just with the addition of brackets around the Cloze deletion. 
 Your goal is to highlight the part of the flashcard you believe is most critical for a studying user to be able to recall.
-It can be a word or a small phrase. For example, if you were shown the follwing text:
+It can be a word or a small phrase. For example, if you were shown the following text:
 
 C: Speech is produced in Broca's area.
 
