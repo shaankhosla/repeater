@@ -26,3 +26,4 @@
 
 - Optimize release binary
 - Optimize ci
+- *(release)* V0.1.2
