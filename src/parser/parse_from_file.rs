@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 
 use crate::crud::DB;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 
 #[derive(Default, Clone, Debug)]
 pub struct FileSearchStats {
@@ -141,9 +141,39 @@ pub fn content_to_card(
     file_start_idx: usize,
     file_end_idx: usize,
 ) -> Result<Card> {
+    fn card_location(path: &Path, start_idx: usize, end_idx: usize) -> String {
+        format!(
+            "{} (lines {}-{})",
+            path.display(),
+            start_idx + 1,
+            end_idx + 1
+        )
+    }
+
+    fn card_content_preview(contents: &str) -> String {
+        const PREVIEW_LIMIT: usize = 240;
+        let trimmed = contents.trim();
+        if trimmed.is_empty() {
+            return "<empty>".to_string();
+        }
+        if trimmed.len() <= PREVIEW_LIMIT {
+            return trimmed.to_string();
+        }
+        let mut preview: String = trimmed.chars().take(PREVIEW_LIMIT).collect();
+        preview.push_str("... [truncated]");
+        preview
+    }
+
+    let location = card_location(card_path, file_start_idx, file_end_idx);
     let (question, answer, cloze) = parse_card_lines(contents);
 
-    let card_hash = get_hash(contents).ok_or_else(|| anyhow!("Unable to hash contents"))?;
+    let card_hash = get_hash(contents).ok_or_else(|| {
+        anyhow!(
+            "Unable to hash card from {}.\nContent:\n{}",
+            location,
+            card_content_preview(contents)
+        )
+    })?;
     if let (Some(q), Some(a)) = (question, answer) {
         let content = CardContent::Basic {
             question: q,
@@ -161,7 +191,14 @@ pub fn content_to_card(
         let cloze_range: Option<ClozeRange> = cloze_idxs
             .first()
             .map(|(start, end)| ClozeRange::new(*start, *end))
-            .transpose()?;
+            .transpose()
+            .with_context(|| {
+                format!(
+                    "Invalid cloze range in card from {}.\nContent:\n{}",
+                    location,
+                    card_content_preview(contents)
+                )
+            })?;
 
         let content = CardContent::Cloze {
             text: c,
@@ -174,7 +211,11 @@ pub fn content_to_card(
             card_hash,
         ))
     } else {
-        bail!("Unable to parse anything from card contents:\n{}", contents);
+        bail!(
+            "Unable to parse card from {}.\nContent:\n{}",
+            location,
+            card_content_preview(contents)
+        );
     }
 }
 
@@ -206,8 +247,10 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
             start_idx = line_idx;
         }
         if line.contains("::") {
-            cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
-            buffer.clear();
+            if trim_line(&buffer).is_some() {
+                cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
+                buffer.clear();
+            }
             track_buffer = false;
             cards.push(content_to_card(path, &line, line_idx, line_idx)?);
         }
@@ -462,7 +505,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Unable to parse anything")
+                .contains("Unable to parse card")
         );
 
         // Answer without question
