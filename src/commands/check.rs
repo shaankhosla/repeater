@@ -152,7 +152,9 @@ fn render_plain_summary(crud_stats: &CardStats, file_traversal_stats: &FileSearc
         Palette::dim("Next 30 days:"),
         Palette::paint(Palette::INFO, crud_stats.upcoming_month)
     );
-    if crud_stats.due_cards == 0 && let Some(next_due) = &crud_stats.next_due_date {
+    if crud_stats.due_cards == 0
+        && let Some(next_due) = &crud_stats.next_due_date
+    {
         println!(
             "{} {}",
             Palette::dim("Next due:"),
@@ -440,7 +442,9 @@ fn due_panel(stats: &CardStats) -> Paragraph<'static> {
             Theme::label_span(format!("{}", stats.upcoming_month)),
         ]),
     ];
-    if stats.due_cards == 0 && let Some(next_due) = &stats.next_due_date {
+    if stats.due_cards == 0
+        && let Some(next_due) = &stats.next_due_date
+    {
         lines.push(Line::from(vec![
             Theme::span("Next due"),
             Theme::bullet(),
