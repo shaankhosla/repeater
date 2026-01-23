@@ -42,13 +42,14 @@ impl DB {
 
 #[cfg(test)]
 mod tests {
-    use std::env::temp_dir;
 
     use super::*;
 
     #[tokio::test]
     async fn test_db_connection() {
-        let db_path = temp_dir().join("cards.db");
+        let dir = tempfile::tempdir().unwrap();
+
+        let db_path = dir.path().join("cards.db");
 
         let options = SqliteConnectOptions::from_str(&db_path.to_string_lossy())
             .unwrap()
