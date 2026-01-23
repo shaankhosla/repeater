@@ -54,3 +54,27 @@ impl DB {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_version() {
+        let db = DB::new_in_memory().await.unwrap();
+        let version = db.get_version_update_information().await.unwrap();
+        assert!(version.last_version_check_at.is_none());
+        assert!(version.last_prompted_at.is_none());
+
+        db.update_last_version_check_at().await.unwrap();
+        let version = db.get_version_update_information().await.unwrap();
+        assert!(version.last_version_check_at.is_some());
+        assert!(version.last_prompted_at.is_none());
+
+        db.update_last_prompted_at().await.unwrap();
+        let version = db.get_version_update_information().await.unwrap();
+        assert!(version.last_version_check_at.is_some());
+        assert!(version.last_prompted_at.is_some());
+    }
+}

@@ -48,7 +48,6 @@ harness = false
 inherits = "release"
 lto = "thin"
 opt-level = 3
-strip = true
 debug-assertions = false
 overflow-checks = false
 incremental = false
