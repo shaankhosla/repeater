@@ -275,15 +275,15 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
 
-    use std::env::temp_dir;
-
     use super::*;
 
     #[tokio::test]
     async fn test_card_create() {
         let db = DB::new_in_memory().await.unwrap();
         let content = "Q: what?\nA: yes\n\n";
-        let card_path = temp_dir().join("test.md");
+
+        let dir = tempfile::tempdir().unwrap();
+        let card_path = dir.path().join("test.md");
         let result = create_card_append_file(&db, &card_path, content).await;
         assert!(result.is_ok());
     }
