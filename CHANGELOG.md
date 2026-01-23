@@ -30,3 +30,4 @@
 - *(release)* V0.1.2
 - *(release)* V0.1.2
 - *(release)* V0.1.2
+- *(release)* V0.1.2
