@@ -5,6 +5,7 @@ pub mod prompt_user;
 pub mod rephrase;
 pub mod response;
 pub mod secrets;
+pub mod provider;
 
 pub use client::{ensure_client, test_configured_api_key};
 pub use cloze::request_cloze;
