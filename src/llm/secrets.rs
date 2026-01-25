@@ -15,8 +15,8 @@ use crate::llm::client::get_models;
 use crate::llm::client::initialize_client;
 use crate::llm::provider::LLM_PROVIDERS;
 use crate::utils::get_data_dir;
+use crate::utils::strip_controls_and_escapes;
 use crate::utils::trim_line;
-use crate::{palette::Palette, utils::strip_controls_and_escapes};
 
 use super::provider::LlmProvider;
 
@@ -65,14 +65,23 @@ pub fn clear_api_key() -> Result<bool> {
 }
 
 pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
-    let mut provider_names: Vec<String> = LLM_PROVIDERS.iter().map(|p| p.to_string()).collect();
+    let mut provider_names: Vec<String> = LLM_PROVIDERS
+        .iter()
+        .map(|p| {
+            let mut chars = p.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
 
     let other_label = "Other (must be OpenAI API compatible)";
     provider_names.push(other_label.to_string());
 
     println!("\n{}", prompt);
     let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select the LLM provider you want to use:")
+        .with_prompt("Select the LLM provider:")
         .default(0)
         .items(&provider_names)
         .interact()
@@ -80,16 +89,8 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
     let chosen_provider = &provider_names[selection];
 
     let base_url = if chosen_provider == other_label {
-        println!(
-            "{}",
-            Palette::paint(
-                Palette::SUCCESS,
-                "Enter the base URL for your OpenAI-compatible provider."
-            )
-        );
-
         let raw_base_url: String = Input::new()
-            .with_prompt("Base URL")
+            .with_prompt("Enter base URL (e.g. https://api.openai.com/v1/)")
             .interact_text()
             .unwrap();
 

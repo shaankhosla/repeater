@@ -39,3 +39,49 @@ impl LlmProvider {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_providers() {
+        assert_eq!(LlmProvider::parse("openai"), Some(LlmProvider::OpenAI));
+        assert_eq!(LlmProvider::parse("OpenAI"), Some(LlmProvider::OpenAI));
+        assert_eq!(
+            LlmProvider::parse(" anthropic "),
+            Some(LlmProvider::Anthropic)
+        );
+    }
+
+    #[test]
+    fn parse_invalid_provider() {
+        assert_eq!(LlmProvider::parse("unknown"), None);
+        assert_eq!(LlmProvider::parse(""), None);
+    }
+
+    #[test]
+    fn as_str_matches_expected() {
+        assert_eq!(LlmProvider::OpenAI.as_str(), "openai");
+        assert_eq!(LlmProvider::Anthropic.as_str(), "anthropic");
+    }
+
+    #[test]
+    fn base_url_matches_expected() {
+        assert_eq!(LlmProvider::OpenAI.base_url(), "https://api.openai.com/v1/");
+        assert_eq!(
+            LlmProvider::Anthropic.base_url(),
+            "https://api.anthropic.com/v1/"
+        );
+    }
+
+    #[test]
+    fn default_model_matches_expected() {
+        assert_eq!(LlmProvider::OpenAI.default_model(), "gpt-5-nano");
+        assert_eq!(LlmProvider::Anthropic.default_model(), "claude-3-sonnet");
+    }
+
+    #[test]
+    fn llm_providers_constant_is_consistent() {
+        assert_eq!(LLM_PROVIDERS, ["openai", "anthropic"]);
+    }
+}

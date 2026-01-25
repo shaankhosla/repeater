@@ -79,7 +79,7 @@ pub async fn get_models(client: &Client<OpenAIConfig>) -> Result<Vec<String>> {
         .models()
         .list()
         .await
-        .context("Failed to fetch models from OpenAI")?
+        .context("Failed to fetch models from provider")?
         .data
         .iter()
         .map(|m| m.id.clone())
