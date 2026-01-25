@@ -11,7 +11,7 @@ pub const LLM_PROVIDERS: [&str; 2] = [
 ];
 
 impl LlmProvider {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "openai" => Some(Self::OpenAI),
             "anthropic" => Some(Self::Anthropic),

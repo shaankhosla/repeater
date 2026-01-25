@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use async_openai::Client;
-use async_openai::config::OpenAIConfig;
 
 use super::prompt_user::{cloze_user_prompt, rephrase_user_prompt};
 use crate::card::{Card, CardContent, ClozeRange};
 use crate::cloze_utils::find_cloze_ranges;
 use crate::palette::Palette;
 
-use super::{ensure_client, request_cloze};
+use super::{LlmClient, ensure_client, request_cloze};
 
 use crate::llm::request_question_rephrase;
 use std::collections::HashMap;
@@ -28,7 +26,7 @@ pub enum AIStatus {
 
 #[derive(Clone, Debug)]
 pub struct DrillPreprocessor {
-    client: Option<Arc<Client<OpenAIConfig>>>,
+    client: Option<Arc<LlmClient>>,
     rephrase_questions: bool,
 }
 
@@ -142,7 +140,7 @@ async fn replace_questions(
     cards: &mut [Card],
     cards_to_rephrase: Vec<(String, String, String)>,
     index_by_hash: &HashMap<String, usize>,
-    client: Arc<Client<OpenAIConfig>>,
+    client: Arc<LlmClient>,
 ) -> Result<()> {
     let mut tasks = stream::iter(
         cards_to_rephrase
@@ -179,7 +177,7 @@ async fn replace_questions(
 
 pub async fn rephrase_basic_questions_with_client(
     cards: &mut [Card],
-    client: Arc<Client<OpenAIConfig>>,
+    client: Arc<LlmClient>,
 ) -> Result<()> {
     let cards_to_rephrase: Vec<_> = cards
         .iter()
@@ -210,7 +208,7 @@ async fn replace_missing_clozes(
     cards: &mut [Card],
     cards_with_no_clozes: Vec<(String, String)>,
     index_by_hash: &HashMap<String, usize>,
-    client: Arc<Client<OpenAIConfig>>,
+    client: Arc<LlmClient>,
 ) -> Result<()> {
     let mut tasks = stream::iter(cards_with_no_clozes.into_iter().map(|(hash, text)| {
         let client = Arc::clone(&client);
@@ -251,7 +249,7 @@ async fn replace_missing_clozes(
 
 pub async fn resolve_missing_clozes_with_client(
     cards: &mut [Card],
-    client: Arc<Client<OpenAIConfig>>,
+    client: Arc<LlmClient>,
 ) -> Result<()> {
     let cards_with_no_clozes: Vec<_> = cards
         .iter()

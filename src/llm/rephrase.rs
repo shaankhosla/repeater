@@ -1,9 +1,7 @@
 use anyhow::Result;
-use async_openai::{Client, config::OpenAIConfig};
 
+use super::LlmClient;
 use super::response::request_single_text_response;
-
-const REPHRASE_MODEL: &str = "gpt-5-nano";
 
 const SYSTEM_PROMPT: &str = r#"
 You rewrite flashcard questions to be clearer while keeping the same fact and difficulty.
@@ -12,7 +10,7 @@ If there is no clear way to rewrite the question, return the original question v
 "#;
 
 pub async fn request_question_rephrase(
-    client: &Client<OpenAIConfig>,
+    client: &LlmClient,
     question: &str,
     answer: &str,
 ) -> Result<String> {
@@ -23,5 +21,5 @@ pub async fn request_question_rephrase(
          Answer (for context; do not reveal): {answer}"
     );
 
-    request_single_text_response(client, REPHRASE_MODEL, SYSTEM_PROMPT, &user_prompt).await
+    request_single_text_response(client, SYSTEM_PROMPT, &user_prompt).await
 }

@@ -8,7 +8,13 @@ use super::secrets::{
     ApiKeySource, ProviderAuth, get_api_key_from_sources, prompt_for_llm_details, store_llm_details,
 };
 
-pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
+#[derive(Clone, Debug)]
+pub struct LlmClient {
+    pub client: Client<OpenAIConfig>,
+    pub llm_auth: ProviderAuth,
+}
+
+pub async fn ensure_client(user_prompt: &str) -> Result<LlmClient> {
     let lookup = get_api_key_from_sources()?;
     let (llm_auth, prompted_for_key) = if let Some(llm_auth) = lookup.llm_auth {
         (llm_auth, false)
@@ -26,7 +32,7 @@ pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     }
 
     let client = initialize_client(&llm_auth)?;
-    Ok(client)
+    Ok(LlmClient { client, llm_auth })
 }
 
 pub async fn get_auth_and_store(user_prompt: &str) -> Result<ProviderAuth> {

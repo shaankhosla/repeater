@@ -92,7 +92,7 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
             .with_context(|| "Enter a valid URL, e.g. https://api.openai.com/v1/")?
             .to_string()
     } else {
-        let llm_provider = LlmProvider::from_str(chosen_provider).unwrap();
+        let llm_provider = LlmProvider::parse(chosen_provider).unwrap();
         llm_provider.base_url().to_string()
     };
 
