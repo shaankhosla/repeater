@@ -11,10 +11,10 @@ use dialoguer::Select;
 use dialoguer::{Password, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
 
-use crate::palette::Palette;
 use crate::llm::client::get_models;
 use crate::llm::client::initialize_client;
 use crate::llm::provider::LLM_PROVIDERS;
+use crate::palette::Palette;
 use crate::utils::get_data_dir;
 use crate::utils::strip_controls_and_escapes;
 use crate::utils::trim_line;
