@@ -143,9 +143,12 @@ async fn handle_llm_command(set: bool, clear: bool, test: bool) -> Result<()> {
     }
 
     if clear {
-        llm::clear_api_key()?;
-        println!("Removed the stored LLM config.");
         action_taken = true;
+
+        match llm::clear_api_key()? {
+            true => println!("Removed the stored LLM config."),
+            false => println!("The stored LLM config did not exist."),
+        }
     }
 
     if test {

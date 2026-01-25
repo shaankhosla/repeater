@@ -50,12 +50,18 @@ impl ApiKeySource {
 #[cfg(test)]
 const TEST_AUTH_PATH_ENV: &str = "REPEATER_TEST_AUTH_PATH";
 
-pub fn clear_api_key() -> Result<()> {
+pub fn clear_api_key() -> Result<bool> {
     let auth_path = auth_file_path()?;
 
-    fs::remove_file(&auth_path)
-        .with_context(|| format!("Failed to remove auth file at {}", auth_path.display()))?;
-    Ok(())
+    match fs::remove_file(&auth_path) {
+        Ok(()) => Ok(true), // existed and was cleared
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(false) // did not exist
+        }
+        Err(e) => {
+            Err(e).with_context(|| format!("Failed to remove auth file at {}", auth_path.display()))
+        }
+    }
 }
 
 pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
@@ -214,4 +220,73 @@ fn write_auth_file(path: &Path, value: &ProviderAuth) -> Result<()> {
 fn serialize_auth(value: &ProviderAuth) -> Result<String> {
     let contents = serde_json::to_string_pretty(value)?;
     Ok(format!("{}\n", contents))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn parse_auth_contents_handles_empty() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        fs::write(&path, "\n\n").unwrap();
+
+        let parsed = read_auth_file(&path);
+        assert!(parsed.is_ok());
+        assert!(parsed.unwrap().is_none());
+    }
+
+    #[test]
+    fn file_doesnt_exist() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+        let unexisting_file_auth = read_auth_file(&path).unwrap();
+        assert!(unexisting_file_auth.is_none());
+    }
+
+    #[test]
+    fn overwrite() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+        let mut llm_auth = ProviderAuth {
+            key: Some("fake_key".to_string()),
+            name: "name".to_string(),
+            base_url: "base_url".to_string(),
+            model: "model".to_string(),
+        };
+        store_llm_details(&llm_auth).unwrap();
+
+        llm_auth.key = Some("real_key".to_string());
+        store_llm_details(&llm_auth).unwrap();
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert_eq!(api_key.llm_auth.unwrap().key.unwrap(), "real_key");
+
+        clear_api_key().unwrap();
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.llm_auth.is_none());
+    }
+
+    #[test]
+    fn load_key_without_store() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("auth.json");
+
+        unsafe {
+            env::set_var(TEST_AUTH_PATH_ENV, &path);
+        }
+
+        let api_key = get_api_key_from_sources().unwrap();
+        assert!(api_key.llm_auth.is_none());
+
+        let clear = clear_api_key().unwrap();
+        assert!(!clear);
+    }
 }
