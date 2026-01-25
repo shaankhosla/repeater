@@ -1,4 +1,6 @@
 use std::env;
+
+use dialoguer::FuzzySelect;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -112,8 +114,8 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
         .await
         .with_context(|| "Failed to connect to provider")?;
 
-    let model_selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("Select model to use:")
+    let model_selection = FuzzySelect::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select model to use (type to search):")
         .default(0)
         .items(&models)
         .interact()
