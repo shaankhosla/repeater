@@ -1,9 +1,7 @@
 use anyhow::Result;
-use async_openai::{Client, config::OpenAIConfig};
 
+use super::LlmClient;
 use super::response::request_single_text_response;
-
-const CLOZE_MODEL: &str = "gpt-5-nano";
 
 const SYSTEM_PROMPT: &str = r#"
 You convert flashcards into Cloze deletions.
@@ -27,8 +25,8 @@ This is the text you should generate the Cloze deletion for:
 
 "#;
 
-pub async fn request_cloze(client: &Client<OpenAIConfig>, text: &str) -> Result<String> {
+pub async fn request_cloze(client: &LlmClient, text: &str) -> Result<String> {
     let user_prompt = format!("{USER_PROMPT_HEADER}{text}");
 
-    request_single_text_response(client, CLOZE_MODEL, SYSTEM_PROMPT, &user_prompt).await
+    request_single_text_response(client, SYSTEM_PROMPT, &user_prompt).await
 }

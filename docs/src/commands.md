@@ -62,10 +62,10 @@ repeater import ~/Downloads/my_collection.apkg cards/anki
 
 ### `repeater llm [--set|--clear|--test]`
 
-Manage the optional OpenAI helper that can auto-cloze missing brackets and rephrase questions before a drill.
+Manage the optional LLM helper that can auto-cloze missing brackets and rephrase questions before a drill.
 
-- `--set <KEY>`: write the key to the local keyring (`com.repeater/openai:default`).
-- `--test`: verify the configured key by calling OpenAI.
-- `--clear`: delete the stored key; use this when rotating credentials.
+- `--set`: configure provider, base URL, API key, and model (stored in the local auth file).
+- `--test`: verify the configured provider by listing models.
+- `--clear`: delete the stored config; use this when rotating credentials.
 
-Instead of `--set`, you can export `REPEATER_OPENAI_API_KEY` for one-off runs. Skip configuring this command entirely to keep the feature disabled.
+Instead of `--set`, you can export `OPENAI_API_KEY` for one-off runs. Skip configuring this command entirely to keep the feature disabled.

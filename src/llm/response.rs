@@ -1,20 +1,17 @@
 use anyhow::{Context, Result, bail};
-use async_openai::{
-    Client,
-    config::OpenAIConfig,
-    types::responses::{
-        CreateResponseArgs, InputMessage, InputRole, OutputItem, OutputMessageContent,
-    },
+use async_openai::types::responses::{
+    CreateResponseArgs, InputMessage, InputRole, OutputItem, OutputMessageContent,
 };
 
+use super::LlmClient;
+
 pub async fn request_single_text_response(
-    client: &Client<OpenAIConfig>,
-    model: &str,
+    client: &LlmClient,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
     let request = CreateResponseArgs::default()
-        .model(model)
+        .model(client.llm_auth.model.as_str())
         .max_output_tokens(5000_u32)
         .input(vec![
             InputMessage {
@@ -31,6 +28,7 @@ pub async fn request_single_text_response(
         .build()?;
 
     let response = client
+        .client
         .responses()
         .create(request)
         .await

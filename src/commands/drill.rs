@@ -7,6 +7,7 @@ use crate::cloze_utils::mask_cloze_text;
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
+use crate::palette::Palette;
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
 use crate::parser::{Media, extract_media};
@@ -54,11 +55,14 @@ pub async fn run(
     }
 
     if cards_due_today.is_empty() {
-        println!("All caught up—no cards due today.");
+        println!(
+            "{}",
+            Palette::paint(Palette::SUCCESS, "All caught up—no cards due today.")
+        );
         return Ok(());
     }
 
-    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions)?;
+    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions).await?;
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
     start_drill_session(db, cards_due_today, drill_preprocessor).await?;
 
