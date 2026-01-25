@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueHint};
 use repeater::commands::{check, create, drill};
 use repeater::crud::DB;
 use repeater::llm::client;
-use repeater::{import, llm};
+use repeater::{import, llm, palette::Palette};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -138,7 +138,10 @@ async fn handle_llm_command(set: bool, clear: bool, test: bool) -> Result<()> {
     if set {
         let user_prompt = "Enter your OpenAI API key:";
         let _ = client::get_auth_and_store(user_prompt).await?;
-        println!("Stored the LLM config in the local auth file.");
+        println!(
+            "{}",
+            Palette::paint(Palette::SUCCESS, "Stored the LLM config in the local auth file.")
+        );
         action_taken = true;
     }
 
@@ -146,14 +149,25 @@ async fn handle_llm_command(set: bool, clear: bool, test: bool) -> Result<()> {
         action_taken = true;
 
         match llm::clear_api_key()? {
-            true => println!("Removed the stored LLM config."),
-            false => println!("The stored LLM config did not exist."),
+            true => println!(
+                "{}",
+                Palette::paint(Palette::SUCCESS, "Removed the stored LLM config.")
+            ),
+            false => println!(
+                "{}",
+                Palette::dim("The stored LLM config did not exist.")
+            ),
         }
     }
 
     if test {
         let source = llm::test_configured_api_key().await?;
-        println!("LLM config from the {} is valid.", source.description());
+        println!(
+            "{} {} {}",
+            Palette::dim("LLM config from the"),
+            Palette::paint(Palette::INFO, source.description()),
+            Palette::paint(Palette::SUCCESS, "is valid.")
+        );
         action_taken = true;
     }
 

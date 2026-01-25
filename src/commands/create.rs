@@ -48,7 +48,10 @@ pub async fn run(db: &DB, card_path: PathBuf) -> Result<()> {
             Palette::paint(Palette::ACCENT, card_path.display())
         ));
         if !should_create {
-            println!("Aborting; card not created.");
+            println!(
+                "{}",
+                Palette::paint(Palette::WARNING, "Aborting; card not created.")
+            );
             return Ok(());
         }
         create_file(&card_path)?;

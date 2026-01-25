@@ -11,6 +11,7 @@ use dialoguer::Select;
 use dialoguer::{Password, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
 
+use crate::palette::Palette;
 use crate::llm::client::get_models;
 use crate::llm::client::initialize_client;
 use crate::llm::provider::LLM_PROVIDERS;
@@ -79,7 +80,7 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
     let other_label = "Other (must be OpenAI API compatible)";
     provider_names.push(other_label.to_string());
 
-    println!("\n{}", prompt);
+    println!("\n{}", Palette::paint(Palette::ACCENT, prompt));
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Select the LLM provider:")
         .default(0)
