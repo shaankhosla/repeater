@@ -1,32 +1,41 @@
-use crate::utils::trim_line;
-
-#[derive(Debug, Clone)]
-pub struct LlmProvider {
-    pub name: &'static str,
-    pub base_url: &'static str,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LlmProvider {
+    #[default]
+    OpenAI,
+    Anthropic,
 }
 
-const DEFAULT_PROVIDER: LlmProvider = LlmProvider {
-    name: "openai",
-    base_url: "https://api.openai.com/v1/",
-};
-
-pub const LLM_PROVIDERS: &[LlmProvider] = &[
-    LlmProvider {
-        name: "openai",
-        base_url: "https://api.openai.com/v1/",
-    },
-    LlmProvider {
-        name: "anthropic",
-        base_url: "https://api.anthropic.com/v1/",
-    },
+pub const LLM_PROVIDERS: [&str; 2] = [
+    LlmProvider::OpenAI.as_str(),
+    LlmProvider::Anthropic.as_str(),
 ];
 
-pub fn get_llm_base_url(provider_name: &str) -> Option<String> {
-    let provider_name = trim_line(provider_name)?;
+impl LlmProvider {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "openai" => Some(Self::OpenAI),
+            "anthropic" => Some(Self::Anthropic),
+            _ => None,
+        }
+    }
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAI => "openai",
+            Self::Anthropic => "anthropic",
+        }
+    }
 
-    LLM_PROVIDERS
-        .iter()
-        .find(|p| p.name.eq_ignore_ascii_case(provider_name))
-        .map(|p| p.base_url.to_string())
+    pub const fn base_url(self) -> &'static str {
+        match self {
+            Self::OpenAI => "https://api.openai.com/v1/",
+            Self::Anthropic => "https://api.anthropic.com/v1/",
+        }
+    }
+
+    pub const fn default_model(self) -> &'static str {
+        match self {
+            Self::OpenAI => "gpt-5-nano",
+            Self::Anthropic => "claude-3-sonnet",
+        }
+    }
 }

@@ -33,7 +33,7 @@ pub struct DrillPreprocessor {
 }
 
 impl DrillPreprocessor {
-    pub fn new(cards: &[Card], rephrase_questions: bool) -> Result<Self> {
+    pub async fn new(cards: &[Card], rephrase_questions: bool) -> Result<Self> {
         let cards_needing_clozes = count_cards_needing_clozes(cards);
         let cards_needing_rephrase = if rephrase_questions {
             count_cards_needing_rephrase(cards)
@@ -97,6 +97,7 @@ impl DrillPreprocessor {
                 };
                 Some(
                     ensure_client(&prompt)
+                        .await
                         .with_context(|| error_message)
                         .map(Arc::new)?,
                 )

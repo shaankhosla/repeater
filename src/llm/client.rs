@@ -4,24 +4,17 @@ use anyhow::{Context, Result, anyhow, bail};
 
 use async_openai::{Client, config::OpenAIConfig};
 
-use super::secrets::{ApiKeySource, get_api_key_from_sources, prompt_for_api_key, store_api_key};
+use super::secrets::{
+    ApiKeySource, ProviderAuth, get_api_key_from_sources, prompt_for_llm_details, store_llm_details,
+};
 
-pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
+pub async fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
     let lookup = get_api_key_from_sources()?;
-    let (key, prompted_for_key) = if let Some(api_key) = lookup.api_key {
-        (api_key, false)
+    let (llm_auth, prompted_for_key) = if let Some(llm_auth) = lookup.llm_auth {
+        (llm_auth, false)
     } else {
-        let api_key = prompt_for_api_key(user_prompt)?;
-        if api_key.is_empty() {
-            bail!(
-                "No API key provided. Set {} or run `repeater llm key --set <KEY>`.",
-                API_KEY_ENV
-            );
-        }
-
-        store_api_key(&api_key)?;
-
-        (api_key, true)
+        let llm_auth = get_auth_and_store(user_prompt).await?;
+        (llm_auth, true)
     };
 
     // If we didn't prompt for the API key (it already existed), confirm with the user
@@ -32,13 +25,20 @@ pub fn ensure_client(user_prompt: &str) -> Result<Client<OpenAIConfig>> {
         }
     }
 
-    let client = initialize_client(&key)?;
+    let client = initialize_client(&llm_auth)?;
     Ok(client)
+}
+
+pub async fn get_auth_and_store(user_prompt: &str) -> Result<ProviderAuth> {
+    let llm_auth = prompt_for_llm_details(user_prompt).await?;
+
+    store_llm_details(&llm_auth)?;
+    Ok(llm_auth)
 }
 
 pub async fn test_configured_api_key() -> Result<ApiKeySource> {
     let lookup = get_api_key_from_sources()?;
-    let key = lookup.api_key.ok_or_else(|| {
+    let llm_auth = lookup.llm_auth.ok_or_else(|| {
         anyhow!(
             "LLM features are disabled. To enable, set {} or run `repeater llm key --set <KEY>`.",
             API_KEY_ENV
@@ -50,23 +50,34 @@ pub async fn test_configured_api_key() -> Result<ApiKeySource> {
             API_KEY_ENV
         )
     })?;
-    let client = initialize_client(&key)?;
-    healthcheck_client(&client).await?;
+    let client = initialize_client(&llm_auth)?;
+    get_models(&client).await?;
     Ok(source)
 }
 
-fn initialize_client(api_key: &str) -> Result<Client<OpenAIConfig>> {
-    let config = OpenAIConfig::new().with_api_key(api_key);
+pub fn initialize_client(llm_auth: &ProviderAuth) -> Result<Client<OpenAIConfig>> {
+    let mut config = OpenAIConfig::new();
+
+    if let Some(key) = &llm_auth.key {
+        config = config.with_api_key(key);
+    }
+
+    config = config.with_api_base(llm_auth.base_url.clone());
 
     let client = Client::with_config(config);
     Ok(client)
 }
 
-async fn healthcheck_client(client: &Client<OpenAIConfig>) -> Result<()> {
-    client
+pub async fn get_models(client: &Client<OpenAIConfig>) -> Result<Vec<String>> {
+    let models = client
         .models()
         .list()
         .await
-        .context("Failed to validate API key with OpenAI")?;
-    Ok(())
+        .context("Failed to fetch models from OpenAI")?
+        .data
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
+
+    Ok(models)
 }

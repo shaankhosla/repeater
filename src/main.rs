@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand, ValueHint};
 
 use repeater::commands::{check, create, drill};
 use repeater::crud::DB;
+use repeater::llm::client;
 use repeater::{import, llm};
 
 #[derive(Parser, Debug)]
@@ -79,8 +80,8 @@ enum Command {
     /// Manage LLM helper settings
     Llm {
         /// Store a new API key in the local auth file
-        #[arg(long, value_name = "KEY", conflicts_with = "clear")]
-        set: Option<String>,
+        #[arg(long, conflicts_with = "clear")]
+        set: bool,
         /// Remove the stored API key from the local auth file
         #[arg(long, conflicts_with = "test")]
         clear: bool,
@@ -131,28 +132,25 @@ async fn run_cli() -> Result<()> {
     Ok(())
 }
 
-async fn handle_llm_command(set: Option<String>, clear: bool, test: bool) -> Result<()> {
+async fn handle_llm_command(set: bool, clear: bool, test: bool) -> Result<()> {
     let mut action_taken = false;
 
-    if let Some(key) = set {
-        llm::store_api_key(&key)?;
-        println!("Stored OpenAI API key in the local auth file.");
+    if set {
+        let user_prompt = "Enter your OpenAI API key:";
+        let _ = client::get_auth_and_store(user_prompt).await?;
+        println!("Stored the LLM config in the local auth file.");
         action_taken = true;
     }
 
     if clear {
-        let removed = llm::clear_api_key()?;
-        if removed {
-            println!("Removed the stored OpenAI API key.");
-        } else {
-            println!("No OpenAI API key found in the auth file.");
-        }
+        llm::clear_api_key()?;
+        println!("Removed the stored LLM config.");
         action_taken = true;
     }
 
     if test {
         let source = llm::test_configured_api_key().await?;
-        println!("OpenAI API key from the {} is valid.", source.description());
+        println!("LLM config from the {} is valid.", source.description());
         action_taken = true;
     }
 

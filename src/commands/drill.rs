@@ -58,7 +58,7 @@ pub async fn run(
         return Ok(());
     }
 
-    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions)?;
+    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions).await?;
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
     start_drill_session(db, cards_due_today, drill_preprocessor).await?;
 
