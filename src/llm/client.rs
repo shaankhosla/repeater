@@ -46,13 +46,13 @@ pub async fn test_configured_api_key() -> Result<ApiKeySource> {
     let lookup = get_api_key_from_sources()?;
     let llm_auth = lookup.llm_auth.ok_or_else(|| {
         anyhow!(
-            "LLM features are disabled. To enable, set {} or run `repeater llm key --set <KEY>`.",
+            "LLM features are disabled. To enable, set {} or run `repeater llm key --set`.",
             API_KEY_ENV
         )
     })?;
     let source = lookup.source.ok_or_else(|| {
         anyhow!(
-            "LLM features are disabled. To enable, set {} or run `repeater llm key --set <KEY>`.",
+            "LLM features are disabled. To enable, set {} or run `repeater llm key --set`.",
             API_KEY_ENV
         )
     })?;
