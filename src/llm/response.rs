@@ -1,9 +1,8 @@
 use anyhow::{Context, Result, bail};
-use async_openai::types::responses::{
-    CreateResponseArgs, InputMessage, InputRole, OutputItem, OutputMessageContent,
-};
+use async_openai::types::responses::{CreateResponseArgs, InputMessage, InputRole};
 
 use super::LlmClient;
+use serde_json::Value;
 
 pub async fn request_single_text_response(
     client: &LlmClient,
@@ -27,26 +26,19 @@ pub async fn request_single_text_response(
         ])
         .build()?;
 
-    let response = client
+    let response: Value = client
         .client
         .responses()
-        .create(request)
+        .create_byot(request)
         .await
         .with_context(|| "Failed to get response from LLM")?;
 
-    for item in response.output {
-        if let OutputItem::Message(message) = item {
-            for content in message.content {
-                if let OutputMessageContent::OutputText(text) = content {
-                    let trimmed = text.text.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    return Ok(trimmed.to_string());
-                }
-            }
+    if let Some(content) = response["output"][0]["content"][0]["text"].as_str() {
+        let trimmed_content = content.trim();
+        if !trimmed_content.is_empty() {
+            return Ok(trimmed_content.to_string());
         }
     }
 
-    bail!("No text output returned from model")
+    bail!(format!("Invalid response from model:\n{response}"))
 }
