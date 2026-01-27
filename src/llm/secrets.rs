@@ -98,7 +98,7 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
         let cleaned_base_url = strip_controls_and_escapes(&raw_base_url);
         let no_slashes = cleaned_base_url.trim_end_matches("/");
 
-        trim_line(&no_slashes)
+        trim_line(no_slashes)
             .with_context(|| "Enter a valid URL, e.g. https://api.openai.com/v1/")?
             .to_string()
     } else {
