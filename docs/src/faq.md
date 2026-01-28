@@ -2,7 +2,7 @@
 
 ## How is scheduling different from Anki?
 
-`repeater` schedules cards with the Free Spaced Repetition Scheduler (FSRS) targeting ~90 % recall, so you get dynamically computed intervals instead of SM-2’s fixed ease multipliers. Inside the drill UI there are only two buttons—`Pass` (`2`) and `Fail` (`1`)—which the code maps to FSRS quality scores of 3 and 1, respectively, while still applying the upstream stability/difficulty math plus the short “learning” ramp for your first few reviews. The end result feels faster to grade yet still reuses FSRS’s predictions.
+`repeater` schedules cards with the Free Spaced Repetition Scheduler (FSRS) targeting your chosen recall probability (`--retention`, default ~90 %), so you get dynamically computed intervals instead of SM-2’s fixed ease multipliers. Inside the drill UI there are only two buttons—`Pass` (`2`) and `Fail` (`1`)—which the code maps to FSRS quality scores of 3 and 1, respectively, while still applying the upstream stability/difficulty math plus the short “learning” ramp for your first few reviews. The end result feels faster to grade yet still reuses FSRS’s predictions.
 
 ## Where does my progress live?
 
