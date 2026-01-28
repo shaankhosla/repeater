@@ -1,5 +1,5 @@
-## [0.1.3] - 2026-01-25
+## [0.1.4] - 2026-01-27
 
-### 🚀 Features
+### 🐛 Bug Fixes
 
-- Custom LLM providers (any OpenAI compatible API) and model (#90)
+- Trim base url if custom (#94)
