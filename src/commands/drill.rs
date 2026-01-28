@@ -14,7 +14,7 @@ use crate::parser::{Media, extract_media};
 use crate::tui::Theme;
 use crate::utils::pluralize;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use crossterm::event::KeyModifiers;
 use crossterm::{
     event::{
@@ -43,7 +43,9 @@ pub async fn run(
     new_card_limit: Option<usize>,
     rephrase_questions: bool,
     shuffle: bool,
+    retention: f32,
 ) -> Result<()> {
+    validate_retention(retention)?;
     let (hash_cards, _) = register_all_cards(db, paths).await?;
     let mut cards_due_today = db
         .due_today(&hash_cards, card_limit, new_card_limit)
@@ -64,11 +66,20 @@ pub async fn run(
 
     let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions).await?;
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
-    start_drill_session(db, cards_due_today, drill_preprocessor).await?;
+    start_drill_session(db, cards_due_today, drill_preprocessor, retention).await?;
 
     Ok(())
 }
 
+fn validate_retention(retention: f32) -> Result<()> {
+    if retention > 1.0 {
+        bail!("Retention must be less than or equal to 1.0")
+    }
+    if retention < 0.65 {
+        bail!("Retention must be greater than 0.65")
+    }
+    Ok(())
+}
 struct DrillState<'a> {
     db: &'a DB,
     cards: Vec<Card>,
@@ -77,6 +88,7 @@ struct DrillState<'a> {
     show_answer: bool,
     last_action: Option<LastAction>,
     current_medias: Vec<Media>,
+    retention: f32,
 }
 struct LastAction {
     action: ReviewStatus,
@@ -102,7 +114,7 @@ impl LastAction {
 }
 
 impl<'a> DrillState<'a> {
-    fn new(db: &'a DB, cards: Vec<Card>) -> Self {
+    fn new(db: &'a DB, cards: Vec<Card>, retention: f32) -> Self {
         Self {
             db,
             cards,
@@ -111,6 +123,7 @@ impl<'a> DrillState<'a> {
             show_answer: false,
             last_action: None,
             current_medias: Vec::new(),
+            retention,
         }
     }
 
@@ -135,7 +148,7 @@ impl<'a> DrillState<'a> {
             .expect("card should exist when handling review");
         let show_again_duration = self
             .db
-            .update_card_performance(&current_card, action, None)
+            .update_card_performance(&current_card, action, None, self.retention)
             .await?;
         if action == ReviewStatus::Fail
             || show_again_duration
@@ -187,6 +200,7 @@ async fn start_drill_session(
     db: &DB,
     cards: Vec<Card>,
     drill_preprocessor: DrillPreprocessor,
+    retention: f32,
 ) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
@@ -213,7 +227,7 @@ async fn start_drill_session(
         None
     };
 
-    let mut state = DrillState::new(db, cards);
+    let mut state = DrillState::new(db, cards, retention);
 
     let loop_result: Result<()> = async {
         loop {
@@ -547,7 +561,7 @@ mod tests {
     #[test]
     fn instructions_show_answer_branch_includes_pass_and_fail() {
         let db = in_memory_db();
-        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")]);
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9);
         state.show_answer = true;
 
         let lines = instructions_text(&state);
@@ -560,7 +574,7 @@ mod tests {
     #[test]
     fn recent_last_action_is_displayed_in_instructions() {
         let db = in_memory_db();
-        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")]);
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9);
         state.show_answer = true;
         state.last_action = Some(LastAction {
             action: ReviewStatus::Fail,

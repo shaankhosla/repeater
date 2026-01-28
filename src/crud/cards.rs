@@ -90,6 +90,7 @@ impl DB {
         card: &Card,
         review_status: ReviewStatus,
         optional_now: Option<chrono::DateTime<chrono::Utc>>,
+        retention: f32,
     ) -> Result<f64> {
         let current_performance = self.get_card_performance(card).await?;
         let now = match optional_now {
@@ -97,7 +98,8 @@ impl DB {
             None => chrono::Utc::now(),
         };
 
-        let new_performance = update_performance(current_performance, review_status, now)?;
+        let new_performance =
+            update_performance(current_performance, review_status, now, retention)?;
 
         let interval_days = new_performance.interval_days as i64;
         let review_count = new_performance.review_count as i64;
@@ -277,7 +279,7 @@ mod tests {
 
         // check short-term scheduling
         for _ in 0..3 {
-            db.update_card_performance(&card, ReviewStatus::Pass, None)
+            db.update_card_performance(&card, ReviewStatus::Pass, None, 0.9)
                 .await
                 .unwrap();
         }
@@ -292,7 +294,7 @@ mod tests {
 
         // wait the interval and then pass again
         let mut future_time = chrono::Utc::now() + chrono::Duration::days(1);
-        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time))
+        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time), 0.9)
             .await
             .unwrap();
 
@@ -307,7 +309,7 @@ mod tests {
 
         // wait the interval and then pass again
         future_time += chrono::Duration::days(7);
-        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time))
+        db.update_card_performance(&card, ReviewStatus::Pass, Some(future_time), 0.9)
             .await
             .unwrap();
 
@@ -322,7 +324,7 @@ mod tests {
 
         // now collapse it with a failure
         future_time += chrono::Duration::days(31);
-        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time), 0.9)
             .await
             .unwrap();
 
@@ -337,7 +339,7 @@ mod tests {
 
         // another failure
         future_time += chrono::Duration::days(2);
-        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time))
+        db.update_card_performance(&card, ReviewStatus::Fail, Some(future_time), 0.9)
             .await
             .unwrap();
 

@@ -8,11 +8,12 @@ Start a terminal drilling session for one or more files/directories (default: cu
 - `--new-card-limit <N>`: cap the number of unseen cards introduced.
 - `--rephrase`: rephrase basic questions via the LLM helper before the session starts.
 - `--shuffle`: randomize the order of cards in the session.
+- `--retention <FLOAT>`: target recall probability for FSRS scheduling (default: `0.9`, allowed range: `0.65`–`1.0`).
 
-Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards.
+Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards. This is just for extra practice, so let's lower the retention rate to `0.7`.
 
 ```sh
-repeater drill flashcards/science/physics/ flashcards/science/chemistry.md --card-limit 20
+repeater drill flashcards/science/physics/ flashcards/science/chemistry.md --card-limit 20 --retention .7
 ```
 
 Key bindings inside the drill UI:
