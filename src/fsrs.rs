@@ -93,7 +93,16 @@ pub fn update_performance(
     };
 
     let elapsed_days = last_reviewed_at
-        .map(|last| reviewed_at.signed_duration_since(last).num_days().max(0) as u32)
+        .map(|last| {
+            if review_count < 3 {
+                return 0;
+            }
+            let secs = reviewed_at.signed_duration_since(last).num_seconds().max(0) as f64;
+            let days = secs / SECONDS_PER_DAY;
+            // Ensure sub-day intervals count as at least 1 day for FSRS,
+            // allowing stability to update
+            days.max(1.0).round() as u32
+        })
         .unwrap_or(0);
 
     let fsrs = fsrs_model()?;
