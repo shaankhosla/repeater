@@ -73,6 +73,10 @@ impl Editor {
     }
 
     pub fn insert_newline(&mut self) {
+        let prefix_len = self.protected_prefix_len(self.cursor_row);
+        if self.cursor_col < prefix_len {
+            return;
+        }
         let column = self.cursor_col;
         let line = self.current_line_mut();
         let idx = Self::char_to_byte_index(line, column);
@@ -87,6 +91,10 @@ impl Editor {
     }
 
     pub fn backspace(&mut self) {
+        let prefix_len = self.protected_prefix_len(self.cursor_row);
+        if self.cursor_col <= prefix_len {
+            return;
+        }
         if self.cursor_col > 0 {
             let column = self.cursor_col;
             let line = self.current_line_mut();
@@ -110,8 +118,12 @@ impl Editor {
     }
 
     pub fn delete(&mut self) {
+        let prefix_len = self.protected_prefix_len(self.cursor_row);
         let line_len = self.line_len(self.cursor_row);
         if self.cursor_col < line_len {
+            if self.cursor_col < prefix_len {
+                return;
+            }
             let column = self.cursor_col;
             let line = self.current_line_mut();
             let start = Self::char_to_byte_index(line, column);
@@ -121,6 +133,9 @@ impl Editor {
         }
 
         if self.cursor_row + 1 >= self.lines.len() {
+            return;
+        }
+        if self.protected_prefix_len(self.cursor_row + 1) > 0 {
             return;
         }
 
@@ -191,6 +206,21 @@ impl Editor {
             .nth(column)
             .map(|(idx, _)| idx)
             .unwrap_or_else(|| line.len())
+    }
+
+    fn protected_prefix_len(&self, row: usize) -> usize {
+        let prefix = match self.card_type {
+            CardType::Basic => match row {
+                0 => "Q: ",
+                1 => "A: ",
+                _ => "",
+            },
+            CardType::Cloze => match row {
+                0 => "C: ",
+                _ => "",
+            },
+        };
+        prefix.chars().count()
     }
 }
 
