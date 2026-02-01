@@ -1,14 +1,9 @@
-## [0.1.5] - 2026-01-31
+## [0.1.6] - 2026-02-01
 
-### 🚀 Features
+### 🐛 Bug Fixes
 
-- Custom retention rates (#95)
+- Can't delete label in create anymore (#98)
 
 ### 💼 Other
 
-- *(deps)* Bump async-openai from 0.32.3 to 0.32.4 (#92)
-- Fallback to completion endpoint if response fails (#97)
-
-### ⚙️ Miscellaneous Tasks
-
-- Build on ci
+- Low stability high difficulty cards getting stuck (#99)
