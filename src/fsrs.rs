@@ -255,4 +255,58 @@ mod tests {
         assert_eq!(result.interval_raw, 19.46959490740741);
         assert_eq!(result.review_count, 5);
     }
+
+    /// Test that cards can recover from a "stuck" state after multiple failures.
+    #[test]
+    fn stability_fix_after_failing() {
+        let mut perf = Performance::default();
+        let mut time_reviewed = chrono::Utc::now();
+
+        // Simulate 4 consecutive failures - card enters "stuck" state
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Fail, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        // After 4 fails: stability should be very low, difficulty very high
+        let after_fails = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_fails.stability < 0.1,
+            "After 4 fails, stability should be very low, got {}",
+            after_fails.stability
+        );
+        assert!(
+            after_fails.difficulty > 9.0,
+            "After 4 fails, difficulty should be very high, got {}",
+            after_fails.difficulty
+        );
+
+        // Simulate 4 consecutive passes - card should recover
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Pass, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        let after_passes = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_passes.stability > 1.0,
+            "After 4 passes, stability should recover above 1.0, got {}",
+            after_passes.stability
+        );
+        assert!(
+            after_passes.interval_raw > 1.0,
+            "After 4 passes, interval should be > 1 day, got {}",
+            after_passes.interval_raw
+        );
+    }
 }
