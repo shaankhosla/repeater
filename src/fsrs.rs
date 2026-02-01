@@ -93,7 +93,16 @@ pub fn update_performance(
     };
 
     let elapsed_days = last_reviewed_at
-        .map(|last| reviewed_at.signed_duration_since(last).num_days().max(0) as u32)
+        .map(|last| {
+            if review_count < 3 {
+                return 0;
+            }
+            let secs = reviewed_at.signed_duration_since(last).num_seconds().max(0) as f64;
+            let days = secs / SECONDS_PER_DAY;
+            // Ensure sub-day intervals count as at least 1 day for FSRS,
+            // allowing stability to update
+            days.max(1.0).round() as u32
+        })
         .unwrap_or(0);
 
     let fsrs = fsrs_model()?;
@@ -245,5 +254,59 @@ mod tests {
         .unwrap();
         assert_eq!(result.interval_raw, 19.46959490740741);
         assert_eq!(result.review_count, 5);
+    }
+
+    /// Test that cards can recover from a "stuck" state after multiple failures.
+    #[test]
+    fn stability_fix_after_failing() {
+        let mut perf = Performance::default();
+        let mut time_reviewed = chrono::Utc::now();
+
+        // Simulate 4 consecutive failures - card enters "stuck" state
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Fail, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        // After 4 fails: stability should be very low, difficulty very high
+        let after_fails = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_fails.stability < 0.1,
+            "After 4 fails, stability should be very low, got {}",
+            after_fails.stability
+        );
+        assert!(
+            after_fails.difficulty > 9.0,
+            "After 4 fails, difficulty should be very high, got {}",
+            after_fails.difficulty
+        );
+
+        // Simulate 4 consecutive passes - card should recover
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Pass, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        let after_passes = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_passes.stability > 1.0,
+            "After 4 passes, stability should recover above 1.0, got {}",
+            after_passes.stability
+        );
+        assert!(
+            after_passes.interval_raw > 1.0,
+            "After 4 passes, interval should be > 1 day, got {}",
+            after_passes.interval_raw
+        );
     }
 }
