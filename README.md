@@ -69,6 +69,11 @@ In practice, this means less flexibility but much less friction. You edit cards 
    repeater drill cards
    ```
 
+3. Try the highlights:
+
+   - Optional LLM helper: auto-cloze + rephrase (`repeater llm --set`, then `repeater drill cards --rephrase`)
+   - Anki import: `.apkg → Markdown` (`repeater import deck.apkg cards/anki`)
+
 
 That's it! `repeater` will automatically track progress and schedule reviews.
 
