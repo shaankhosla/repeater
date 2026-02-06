@@ -1,17 +1,16 @@
+use std::fs;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::card::{Card, CardContent};
+use crate::card::{Card, CardContent, CardType};
 use crate::cloze_utils::mask_cloze_text;
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
 use crate::palette::Palette;
-use crate::parser::register_all_cards;
-use crate::parser::render_markdown;
-use crate::parser::{Media, extract_media};
-use crate::tui::Theme;
+use crate::parser::{cards_from_md, content_to_card, extract_media, register_all_cards, render_markdown, Media};
+use crate::tui::{Editor, Theme};
 use crate::utils::pluralize;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -180,6 +179,28 @@ impl<'a> DrillState<'a> {
         }
     }
 
+    fn apply_edit_update(&mut self, update: CardEditUpdate) {
+        let file_path = update.updated_card.file_path.clone();
+        let old_range = update.old_range;
+        let delta = update.line_delta;
+
+        for card in self.cards.iter_mut().chain(self.redo_cards.iter_mut()) {
+            if card.file_path == file_path && card.file_card_range == old_range {
+                *card = update.updated_card.clone();
+                continue;
+            }
+
+            if delta != 0
+                && card.file_path == file_path
+                && card.file_card_range.0 >= old_range.1
+            {
+                let start = (card.file_card_range.0 as isize + delta) as usize;
+                let end = (card.file_card_range.1 as isize + delta) as usize;
+                card.file_card_range = (start, end);
+            }
+        }
+    }
+
     fn current_ai_pending(&self) -> bool {
         matches!(
             self.cards
@@ -194,6 +215,13 @@ impl<'a> DrillState<'a> {
 struct AiUpdate {
     card_hash: String,
     card: Card,
+}
+
+#[derive(Clone, Debug)]
+struct CardEditUpdate {
+    updated_card: Card,
+    old_range: (usize, usize),
+    line_delta: isize,
 }
 
 async fn start_drill_session(
@@ -326,6 +354,12 @@ async fn start_drill_session(
                     KeyCode::Char('F') | KeyCode::Char('f') if state.show_answer && !ai_pending => {
                         state.handle_review(ReviewStatus::Fail).await?;
                     }
+                    KeyCode::Char('E') | KeyCode::Char('e') if !ai_pending => {
+                        let edited = edit_current_card(&mut state, &mut terminal).await?;
+                        if edited {
+                            state.show_answer = false;
+                        }
+                    }
                     KeyCode::Char('O') | KeyCode::Char('o')
                         if !ai_pending
                             && !state.show_answer
@@ -379,6 +413,9 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Theme::key_chip("F"),
             Span::styled(" Fail", Theme::danger()),
             Theme::bullet(),
+            Theme::key_chip("E"),
+            Theme::span(" edit"),
+            Theme::bullet(),
             Theme::key_chip("Esc"),
             Theme::span(" / "),
             Theme::key_chip("Ctrl+C"),
@@ -390,6 +427,9 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Theme::span(" or "),
             Theme::key_chip("Enter"),
             Theme::span(" show answer"),
+            Theme::bullet(),
+            Theme::key_chip("E"),
+            Theme::span(" edit"),
             Theme::bullet(),
             Theme::key_chip("Esc"),
             Theme::span(" / "),
@@ -442,6 +482,269 @@ fn format_card_text(card: &Card, show_answer: bool) -> String {
             format!("C:\n{}", body)
         }
     }
+}
+
+async fn edit_current_card(
+    state: &mut DrillState<'_>,
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+) -> Result<bool> {
+    let Some(original) = state.current_card() else {
+        return Ok(false);
+    };
+    let (card_type, editor_content) = card_to_edit_content(&original);
+    let mut editor = Editor::from_content(card_type, &editor_content);
+    let mut status: Option<String> = None;
+    let mut status_time: Option<Instant> = None;
+    let mut view_height = 0usize;
+
+    terminal.show_cursor().context("failed to show cursor")?;
+
+    let edit_result: Result<bool> = async {
+        loop {
+            terminal
+                .draw(|frame| {
+                    let area = frame.area();
+                    frame.render_widget(Theme::backdrop(), area);
+                    let chunks = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Min(5), Constraint::Length(5)])
+                        .split(area);
+
+                    view_height = chunks[0].height.saturating_sub(2) as usize;
+                    editor.ensure_cursor_visible(view_height.max(1));
+
+                    let editor_block = Theme::panel(original.file_path.display().to_string());
+                    let editor_widget = Paragraph::new(editor.content())
+                        .block(editor_block)
+                        .wrap(Wrap { trim: false })
+                        .scroll((editor.scroll_top() as u16, 0));
+                    frame.render_widget(editor_widget, chunks[0]);
+
+                    let mut help_lines = vec![Line::from(vec![
+                        Theme::key_chip("Ctrl+S"),
+                        Theme::span(" save"),
+                        Theme::bullet(),
+                        Theme::key_chip("Esc"),
+                        Theme::span(" / "),
+                        Theme::key_chip("Ctrl+C"),
+                        Theme::span(" cancel"),
+                    ])];
+
+                    help_lines.push(Line::from(vec![
+                        Theme::span("Editing current card"),
+                        Theme::bullet(),
+                        Theme::span(original.file_path.display().to_string()),
+                    ]));
+
+                    if let Some(time) = status_time
+                        && time.elapsed().as_secs_f64() < FLASH_SECS
+                        && status.is_some()
+                    {
+                        let message = status.clone().unwrap();
+                        let style = if message.starts_with("Unable") {
+                            Theme::danger()
+                        } else {
+                            Theme::success()
+                        };
+                        help_lines.push(Line::from(vec![Span::styled(message, style)]));
+                    }
+
+                    let instructions = Paragraph::new(help_lines)
+                        .block(Theme::panel_with_line(Theme::section_header("Edit")));
+                    frame.render_widget(instructions, chunks[1]);
+
+                    let (cursor_row, cursor_col) = editor.cursor();
+                    let visible_row = cursor_row.saturating_sub(editor.scroll_top());
+                    let cursor_x =
+                        chunks[0].x + 1 + (cursor_col as u16).min(chunks[0].width.saturating_sub(2));
+                    let cursor_y =
+                        chunks[0].y + 1 + (visible_row as u16).min(chunks[0].height.saturating_sub(2));
+                    frame.set_cursor_position((cursor_x, cursor_y));
+                })
+                .context("failed to render edit frame")?;
+
+            if event::poll(Duration::from_millis(16))?
+                && let Event::Key(key) = event::read()?
+            {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
+                if key.code == KeyCode::Esc
+                    || (key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                {
+                    break Ok(false);
+                }
+
+                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    let contents = editor.content();
+                    match save_edited_card(state.db, &original, &contents).await {
+                        Ok(update) => {
+                            state.apply_edit_update(update);
+                            break Ok(true);
+                        }
+                        Err(err) => {
+                            status_time = Some(Instant::now());
+                            let flat_error = err
+                                .chain()
+                                .map(|cause| cause.to_string().replace('\n', " "))
+                                .collect::<Vec<_>>()
+                                .join(": ");
+                            status = Some(format!("Unable to save card: {}", flat_error));
+                        }
+                    }
+                    continue;
+                }
+
+                match key.code {
+                    KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        editor.insert_char(c);
+                    }
+                    KeyCode::Enter => editor.insert_newline(),
+                    KeyCode::Tab => editor.insert_tab(),
+                    KeyCode::Backspace => editor.backspace(),
+                    KeyCode::Delete => editor.delete(),
+                    KeyCode::Left => editor.move_left(),
+                    KeyCode::Right => editor.move_right(),
+                    KeyCode::Up => editor.move_up(),
+                    KeyCode::Down => editor.move_down(),
+                    KeyCode::Home => editor.move_home(),
+                    KeyCode::End => editor.move_end(),
+                    KeyCode::PageUp => {
+                        for _ in 0..view_height.max(1) {
+                            editor.move_up();
+                        }
+                    }
+                    KeyCode::PageDown => {
+                        for _ in 0..view_height.max(1) {
+                            editor.move_down();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    .await;
+
+    terminal.hide_cursor().context("failed to hide cursor")?;
+
+    edit_result
+}
+
+async fn save_edited_card(db: &DB, original: &Card, contents: &str) -> Result<CardEditUpdate> {
+    let mut updated_card = content_to_card(
+        &original.file_path,
+        contents,
+        original.file_card_range.0,
+        original.file_card_range.1,
+    )?;
+
+    let original_contents = fs::read_to_string(&original.file_path).with_context(|| {
+        format!(
+            "Failed to read card file at {}",
+            original.file_path.display()
+        )
+    })?;
+
+    let ends_with_newline = original_contents.ends_with('\n');
+    let mut lines: Vec<String> = original_contents
+        .lines()
+        .map(|line| line.to_string())
+        .collect();
+
+    let mut range = original.file_card_range;
+    let needs_resolve = range.0 >= range.1
+        || range.1 > lines.len()
+        || {
+            let slice = lines[range.0.min(lines.len())..range.1.min(lines.len())].join("\n");
+            match content_to_card(&original.file_path, &slice, range.0, range.1) {
+                Ok(card) => card.card_hash != original.card_hash,
+                Err(_) => true,
+            }
+        };
+    if needs_resolve {
+        range = resolve_card_range(&original.file_path, &original.card_hash)?;
+    }
+
+    let new_lines: Vec<String> = contents.split('\n').map(|line| line.to_string()).collect();
+    let old_line_count = range.1.saturating_sub(range.0);
+    let new_line_count = new_lines.len();
+
+    if updated_card.card_hash != original.card_hash && db.card_exists(&updated_card).await? {
+        bail!("A card with the same content already exists.");
+    }
+
+    lines.splice(range.0..range.1, new_lines);
+    let mut updated_contents = lines.join("\n");
+    if ends_with_newline {
+        updated_contents.push('\n');
+    }
+    fs::write(&original.file_path, updated_contents).with_context(|| {
+        format!(
+            "Failed to write card file at {}",
+            original.file_path.display()
+        )
+    })?;
+
+    if updated_card.card_hash != original.card_hash {
+        if let Err(err) = db
+            .update_card_hash(&original.card_hash, &updated_card.card_hash)
+            .await
+        {
+            let _ = fs::write(&original.file_path, original_contents);
+            return Err(err);
+        }
+    }
+
+    let new_range = (range.0, range.0 + new_line_count);
+    updated_card.file_card_range = new_range;
+    updated_card.ai_status = AIStatus::NoNeed;
+
+    Ok(CardEditUpdate {
+        updated_card,
+        old_range: range,
+        line_delta: new_line_count as isize - old_line_count as isize,
+    })
+}
+
+fn resolve_card_range(path: &Path, card_hash: &str) -> Result<(usize, usize)> {
+    let cards = cards_from_md(path)?;
+    let mut matches = cards.into_iter().filter(|card| card.card_hash == card_hash);
+    let Some(card) = matches.next() else {
+        bail!("Unable to locate the current card in {}", path.display());
+    };
+    if matches.next().is_some() {
+        bail!(
+            "Multiple cards in {} share the same hash; edit is ambiguous.",
+            path.display()
+        );
+    }
+    Ok(card.file_card_range)
+}
+
+fn card_to_edit_content(card: &Card) -> (CardType, String) {
+    match &card.content {
+        CardContent::Basic { question, answer } => {
+            let mut lines = prefixed_lines("Q: ", question);
+            lines.extend(prefixed_lines("A: ", answer));
+            (CardType::Basic, lines.join("\n"))
+        }
+        CardContent::Cloze { text, .. } => {
+            let lines = prefixed_lines("C: ", text);
+            (CardType::Cloze, lines.join("\n"))
+        }
+    }
+}
+
+fn prefixed_lines(prefix: &str, text: &str) -> Vec<String> {
+    let mut iter = text.split('\n');
+    let first = iter.next().unwrap_or("");
+    let mut lines = Vec::new();
+    lines.push(format!("{prefix}{first}"));
+    lines.extend(iter.map(|line| line.to_string()));
+    lines
 }
 
 async fn preprocess_cards_in_order(

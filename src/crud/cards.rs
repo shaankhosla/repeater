@@ -1,9 +1,7 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use futures::TryStreamExt;
 
 use std::collections::HashMap;
-
-use anyhow::anyhow;
 
 use crate::card::Card;
 
@@ -83,6 +81,42 @@ impl DB {
         .fetch_one(&self.pool)
         .await?;
         Ok(count > 0)
+    }
+
+    pub async fn update_card_hash(&self, old_hash: &str, new_hash: &str) -> Result<()> {
+        if old_hash == new_hash {
+            return Ok(());
+        }
+
+        let count: i64 = sqlx::query_scalar!(
+            r#"SELECT COUNT(1) as "count!: i64" FROM cards WHERE card_hash = ?"#,
+            new_hash
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        if count > 0 {
+            bail!("A card with the same content already exists.");
+        }
+
+        let rows_affected = sqlx::query(
+            r#"
+            UPDATE cards
+            SET card_hash = ?
+            WHERE card_hash = ?
+            "#,
+        )
+        .bind(new_hash)
+        .bind(old_hash)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+
+        if rows_affected == 0 {
+            bail!("Card not found in database.");
+        }
+
+        Ok(())
     }
 
     pub async fn update_card_performance(
@@ -347,6 +381,34 @@ mod tests {
             Performance::Reviewed(reviewed) => {
                 assert_eq!(reviewed.review_count, 7);
                 assert_eq!(reviewed.interval_raw, 0.5897800925925926);
+            }
+            _ => panic!(),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_card_hash_preserves_stats() {
+        let db = DB::new_in_memory().await.unwrap();
+        let card_path = PathBuf::from("test.md");
+
+        let original = content_to_card(&card_path, "Q: What?\nA: Yes", 0, 1).unwrap();
+        db.add_card(&original).await.unwrap();
+
+        db.update_card_performance(&original, ReviewStatus::Pass, None, 0.9)
+            .await
+            .unwrap();
+
+        let edited = content_to_card(&card_path, "Q: What?\nA: Yes!", 0, 1).unwrap();
+        db.update_card_hash(&original.card_hash, &edited.card_hash)
+            .await
+            .unwrap();
+
+        assert!(!db.card_exists(&original).await.unwrap());
+        assert!(db.card_exists(&edited).await.unwrap());
+
+        match db.get_card_performance(&edited).await.unwrap() {
+            Performance::Reviewed(reviewed) => {
+                assert_eq!(reviewed.review_count, 1);
             }
             _ => panic!(),
         }

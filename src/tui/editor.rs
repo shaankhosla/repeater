@@ -22,6 +22,22 @@ impl Editor {
             card_type,
         }
     }
+
+    pub fn from_content(card_type: CardType, content: &str) -> Self {
+        let mut lines: Vec<String> = content.split('\n').map(|line| line.to_string()).collect();
+        if lines.is_empty() {
+            lines = Self::init_lines(&card_type);
+        }
+        let mut editor = Self {
+            lines,
+            cursor_row: 0,
+            cursor_col: 0,
+            scroll_top: 0,
+            card_type,
+        };
+        editor.move_cursor_to_end_of_content();
+        editor
+    }
     fn init_lines(card_type: &CardType) -> Vec<String> {
         match card_type {
             CardType::Basic => vec!["Q: ".to_string(), "A: ".to_string()],
@@ -187,6 +203,14 @@ impl Editor {
         self.cursor_col = self.line_len(self.cursor_row);
     }
 
+    fn move_cursor_to_end_of_content(&mut self) {
+        if self.lines.is_empty() {
+            self.lines = Self::init_lines(&self.card_type);
+        }
+        self.cursor_row = self.lines.len().saturating_sub(1);
+        self.cursor_col = self.line_len(self.cursor_row);
+    }
+
     fn current_line_mut(&mut self) -> &mut String {
         if self.lines.is_empty() {
             self.lines.push(String::new());
@@ -209,18 +233,33 @@ impl Editor {
     }
 
     fn protected_prefix_len(&self, row: usize) -> usize {
-        let prefix = match self.card_type {
-            CardType::Basic => match row {
-                0 => "Q: ",
-                1 => "A: ",
-                _ => "",
-            },
-            CardType::Cloze => match row {
-                0 => "C: ",
-                _ => "",
-            },
+        let Some(line) = self.lines.get(row) else {
+            return 0;
         };
-        prefix.chars().count()
+        match self.card_type {
+            CardType::Basic => {
+                if line.starts_with("Q: ") {
+                    "Q: ".chars().count()
+                } else if line.starts_with("Q:") {
+                    "Q:".chars().count()
+                } else if line.starts_with("A: ") {
+                    "A: ".chars().count()
+                } else if line.starts_with("A:") {
+                    "A:".chars().count()
+                } else {
+                    0
+                }
+            }
+            CardType::Cloze => {
+                if line.starts_with("C: ") {
+                    "C: ".chars().count()
+                } else if line.starts_with("C:") {
+                    "C:".chars().count()
+                } else {
+                    0
+                }
+            }
+        }
     }
 }
 

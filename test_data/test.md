@@ -1,6 +1,8 @@
 Q: what?
-A:yes
+A: yes thsi is this and now this
 
+
+now this :)
 C: ping [pong]
 Q: no
 A: space

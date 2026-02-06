@@ -20,6 +20,7 @@ Key bindings inside the drill UI:
 
 - `Space`/`Enter`: reveal the answer or cloze.
 - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
+- `E`: edit the current card in-place and keep its scheduling history.
 - `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
 - `Esc` / `Ctrl+C`: exit the session.
 
