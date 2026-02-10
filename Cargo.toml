@@ -37,7 +37,7 @@ rand = "0.9"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio" ] }
-proptest = "1.6.0"
+proptest = "1.10.0"
 
 [[bench]]
 name = "register_all_cards_bench"
