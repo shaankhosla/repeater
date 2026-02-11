@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use fsrs::{DEFAULT_PARAMETERS, FSRS, MemoryState};
 
-const DESIRED_RETENTION: f32 = 0.9;
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
 pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
@@ -73,6 +72,7 @@ pub fn update_performance(
     perf: Performance,
     review_status: ReviewStatus,
     reviewed_at: DateTime<Utc>,
+    retention: f32,
 ) -> Result<ReviewedPerformance> {
     let (memory_state, last_reviewed_at, review_count) = match perf {
         Performance::New => (None, None, 0),
@@ -93,11 +93,20 @@ pub fn update_performance(
     };
 
     let elapsed_days = last_reviewed_at
-        .map(|last| reviewed_at.signed_duration_since(last).num_days().max(0) as u32)
+        .map(|last| {
+            if review_count < 3 {
+                return 0;
+            }
+            let secs = reviewed_at.signed_duration_since(last).num_seconds().max(0) as f64;
+            let days = secs / SECONDS_PER_DAY;
+            // Ensure sub-day intervals count as at least 1 day for FSRS,
+            // allowing stability to update
+            days.max(1.0).round() as u32
+        })
         .unwrap_or(0);
 
     let fsrs = fsrs_model()?;
-    let next_states = fsrs.next_states(memory_state, DESIRED_RETENTION, elapsed_days)?;
+    let next_states = fsrs.next_states(memory_state, retention, elapsed_days)?;
     let next_state = next_state_for_review(next_states, review_status);
 
     let interval_raw = next_state.interval as f64;
@@ -135,7 +144,7 @@ mod tests {
     fn test_update_new_card() {
         let reviewed_at = chrono::Utc::now();
 
-        let result = update_performance(Performance::New, ReviewStatus::Pass, reviewed_at);
+        let result = update_performance(Performance::New, ReviewStatus::Pass, reviewed_at, 0.9);
         dbg!(result.as_ref().unwrap());
         let ReviewedPerformance {
             last_reviewed_at,
@@ -168,9 +177,13 @@ mod tests {
             due_date: now,
             review_count: 1,
         };
-        let result =
-            update_performance(Performance::Reviewed(initial_perf), ReviewStatus::Pass, now)
-                .unwrap();
+        let result = update_performance(
+            Performance::Reviewed(initial_perf),
+            ReviewStatus::Pass,
+            now,
+            0.9,
+        )
+        .unwrap();
         assert_eq!(result.last_reviewed_at, now);
         assert!(result.interval_days == 0);
         assert_eq!(result.review_count, 2);
@@ -188,10 +201,112 @@ mod tests {
             due_date: now + Duration::days(4),
             review_count: 3,
         };
-        let result =
-            update_performance(Performance::Reviewed(initial_perf), ReviewStatus::Fail, now)
-                .unwrap();
+        let result = update_performance(
+            Performance::Reviewed(initial_perf),
+            ReviewStatus::Fail,
+            now,
+            0.9,
+        )
+        .unwrap();
         assert_eq!(result.interval_raw, 0.7213425925925926);
         assert_eq!(result.review_count, 4);
+    }
+
+    #[test]
+    fn test_retention() {
+        let now = chrono::Utc::now();
+        let initial_perf = ReviewedPerformance {
+            last_reviewed_at: now - Duration::days(4),
+            stability: 3.0,
+            difficulty: 5.0,
+            interval_raw: 4.0,
+            interval_days: 4,
+            due_date: now + Duration::days(4),
+            review_count: 4,
+        };
+        let result = update_performance(
+            Performance::Reviewed(initial_perf),
+            ReviewStatus::Fail,
+            now,
+            0.9,
+        )
+        .unwrap();
+        assert_eq!(result.interval_raw, 0.7213425925925926);
+        assert_eq!(result.review_count, 5);
+
+        // different retention
+        let now = chrono::Utc::now();
+        let initial_perf = ReviewedPerformance {
+            last_reviewed_at: now - Duration::days(4),
+            stability: 3.0,
+            difficulty: 5.0,
+            interval_raw: 4.0,
+            interval_days: 4,
+            due_date: now + Duration::days(4),
+            review_count: 4,
+        };
+        let result = update_performance(
+            Performance::Reviewed(initial_perf),
+            ReviewStatus::Fail,
+            now,
+            0.6,
+        )
+        .unwrap();
+        assert_eq!(result.interval_raw, 19.46959490740741);
+        assert_eq!(result.review_count, 5);
+    }
+
+    /// Test that cards can recover from a "stuck" state after multiple failures.
+    #[test]
+    fn stability_fix_after_failing() {
+        let mut perf = Performance::default();
+        let mut time_reviewed = chrono::Utc::now();
+
+        // Simulate 4 consecutive failures - card enters "stuck" state
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Fail, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        // After 4 fails: stability should be very low, difficulty very high
+        let after_fails = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_fails.stability < 0.1,
+            "After 4 fails, stability should be very low, got {}",
+            after_fails.stability
+        );
+        assert!(
+            after_fails.difficulty > 9.0,
+            "After 4 fails, difficulty should be very high, got {}",
+            after_fails.difficulty
+        );
+
+        // Simulate 4 consecutive passes - card should recover
+        for _ in 0..4 {
+            let reviewed_perf =
+                update_performance(perf, ReviewStatus::Pass, time_reviewed, 0.9).unwrap();
+            time_reviewed = reviewed_perf.due_date;
+            perf = Performance::Reviewed(reviewed_perf);
+        }
+
+        let after_passes = match perf {
+            Performance::Reviewed(p) => p,
+            _ => panic!("expected Reviewed"),
+        };
+        assert!(
+            after_passes.stability > 1.0,
+            "After 4 passes, stability should recover above 1.0, got {}",
+            after_passes.stability
+        );
+        assert!(
+            after_passes.interval_raw > 1.0,
+            "After 4 passes, interval should be > 1 day, got {}",
+            after_passes.interval_raw
+        );
     }
 }

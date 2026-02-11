@@ -1,5 +1,9 @@
-## [0.1.4] - 2026-01-27
+## [0.1.6] - 2026-02-01
 
 ### 🐛 Bug Fixes
 
-- Trim base url if custom (#94)
+- Can't delete label in create anymore (#98)
+
+### 💼 Other
+
+- Low stability high difficulty cards getting stuck (#99)

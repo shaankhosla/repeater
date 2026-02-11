@@ -1,6 +1,6 @@
 [package]
 name = "repeater"
-version = "0.1.4"
+version = "0.1.6"
 edition = "2024"
 repository = "https://github.com/shaankhosla/repeater"
 description="Spaced repetition, in your terminal"
@@ -9,10 +9,10 @@ license-file = "LICENSE"
 authors = ["Shaan Khosla <shaan.khosla@proton.me>"]
 
 [dependencies]
-clap = { version = "4.5.54", features = ["derive"] }
+clap = { version = "4.5.56", features = ["derive"] }
 ratatui = "0.30.0"
 crossterm = "0.29"
-anyhow = "1.0.100"
+anyhow = "1.0.101"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }
 directories = "6.0.0"
 tokio = { version = "1", features = ["rt-multi-thread","macros"]}
@@ -28,16 +28,16 @@ zip = "1.1"
 tempfile = "3"
 serde_json = "1.0.149"
 serde = { version = "1.0", features = ["derive"] }
-async-openai = {version="0.32.3", features = ["responses", "model", "byot"]}
+async-openai = {version="0.32.4", features = ["responses", "model", "byot", "chat-completion"]}
 reqwest = { version = "0.13", features = ["json"] }
 open = "5"
 dialoguer = {version="0.12.0", features=["password", "fuzzy-select"]}
 fsrs = "5.2.0"
-rand = "0.9"
+rand = "0.10"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["async_tokio" ] }
-proptest = "1.6.0"
+proptest = "1.10.0"
 
 [[bench]]
 name = "register_all_cards_bench"

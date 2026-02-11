@@ -45,9 +45,12 @@ enum Command {
         /// Rephrase  card questions via the LLM helper before the session starts.
         #[arg(long = "rephrase", default_value_t = false)]
         rephrase_questions: bool,
-        /// Randomize the order of cards in the drill session
+        /// Randomize the order of cards in the drill session.
         #[arg(long, default_value_t = false)]
         shuffle: bool,
+        /// Goal retention FSRS should use, this is your target probability of recalling a card at review time.
+        #[arg(long, default_value_t = 0.9)]
+        retention: f32,
     },
     /// Re-index decks and show collection stats
     Check {
@@ -110,8 +113,9 @@ async fn run_cli() -> Result<()> {
             new_card_limit,
             rephrase_questions,
             shuffle,
+            retention,
         } => {
-            drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions, shuffle).await?;
+            drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions, shuffle, retention).await?;
         }
         Command::Check { paths, plain } => {
             let _ = check::run(&db, paths, plain).await?;
