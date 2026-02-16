@@ -36,7 +36,7 @@ fsrs = "5.2.0"
 rand = "0.10"
 
 [dev-dependencies]
-criterion = { version = "0.8.1", features = ["async_tokio" ] }
+criterion = { version = "0.8.2", features = ["async_tokio" ] }
 proptest = "1.10.0"
 
 [[bench]]
