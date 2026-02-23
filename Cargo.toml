@@ -22,7 +22,7 @@ futures = "0.3.31"
 ignore = "0.4.25"
 html-escape = "0.2"
 once_cell = "1.20"
-pulldown-cmark = { version = "0.13.0", default-features = false }
+pulldown-cmark = { version = "0.13.1", default-features = false }
 regex = "1.12"
 zip = "0.6"
 tempfile = "3"
