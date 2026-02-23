@@ -12,7 +12,7 @@ authors = ["Shaan Khosla <shaan.khosla@proton.me>"]
 clap = { version = "4.5.58", features = ["derive"] }
 ratatui = "0.30.0"
 crossterm = "0.29"
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }
 directories = "6.0.0"
 tokio = { version = "1", features = ["rt-multi-thread","macros"]}
