@@ -252,7 +252,7 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
                 buffer.clear();
             }
             track_buffer = false;
-            cards.push(content_to_card(path, &line, line_idx, line_idx)?);
+            cards.push(content_to_card(path, &line, line_idx, line_idx + 1)?);
         }
         if line.starts_with("---") && trim_line(&buffer).is_some() {
             cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
