@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
+#[cfg(feature = "llm")]
 use crate::llm::drill_preprocessor::AIStatus;
 
 #[derive(Clone, Debug)]
@@ -11,6 +12,7 @@ pub struct Card {
     pub file_card_range: (usize, usize),
     pub content: CardContent,
     pub card_hash: String,
+    #[cfg(feature = "llm")]
     pub ai_status: AIStatus,
 }
 
@@ -26,6 +28,7 @@ impl Card {
             file_card_range,
             content,
             card_hash,
+            #[cfg(feature = "llm")]
             ai_status: AIStatus::NoNeed,
         }
     }

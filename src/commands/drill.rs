@@ -6,6 +6,7 @@ use crate::card::{Card, CardContent};
 use crate::cloze_utils::mask_cloze_text;
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
+#[cfg(feature = "llm")]
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
 use crate::palette::Palette;
 use crate::parser::register_all_cards;
@@ -14,7 +15,9 @@ use crate::parser::{Media, extract_media};
 use crate::tui::Theme;
 use crate::utils::pluralize;
 
-use anyhow::{Context, Result, anyhow, bail};
+#[cfg(feature = "llm")]
+use anyhow::anyhow;
+use anyhow::{Context, Result, bail};
 use crossterm::event::KeyModifiers;
 use crossterm::{
     event::{
@@ -31,7 +34,12 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
+#[cfg(feature = "llm")]
 use tokio::sync::mpsc;
+
+/// Dummy PreProcessor when not using llms
+#[cfg(not(feature = "llm"))]
+struct DrillPreprocessor {}
 
 const MINUTES_PER_DAY: f64 = 24.0 * 60.0;
 const FLASH_SECS: f64 = 2.0;
@@ -64,8 +72,14 @@ pub async fn run(
         return Ok(());
     }
 
+    #[cfg(feature = "llm")]
     let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions).await?;
+    #[cfg(feature = "llm")]
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
+    #[cfg(not(feature = "llm"))]
+    let drill_preprocessor = DrillPreprocessor {};
+    #[cfg(not(feature = "llm"))]
+    let _ = rephrase_questions; // Avoid unused variable warning
     start_drill_session(db, cards_due_today, drill_preprocessor, retention).await?;
 
     Ok(())
@@ -171,6 +185,7 @@ impl<'a> DrillState<'a> {
         self.current_idx >= self.cards.len() && self.redo_cards.is_empty()
     }
 
+    #[cfg(feature = "llm")]
     fn apply_ai_update(&mut self, update: AiUpdate) {
         for card in self.cards.iter_mut().chain(self.redo_cards.iter_mut()) {
             if card.card_hash == update.card_hash {
@@ -180,6 +195,7 @@ impl<'a> DrillState<'a> {
         }
     }
 
+    #[cfg(feature = "llm")]
     fn current_ai_pending(&self) -> bool {
         matches!(
             self.cards
@@ -188,8 +204,13 @@ impl<'a> DrillState<'a> {
             Some(AIStatus::ClozeNeedDeletion | AIStatus::QuestionNeedRephrasing)
         )
     }
+    #[cfg(not(feature = "llm"))]
+    fn current_ai_pending(&self) -> bool {
+        false
+    }
 }
 
+#[cfg(feature = "llm")]
 #[derive(Clone, Debug)]
 struct AiUpdate {
     card_hash: String,
@@ -217,7 +238,9 @@ async fn start_drill_session(
     let mut terminal = Terminal::new(backend).context("failed to start terminal")?;
     terminal.hide_cursor().context("failed to hide cursor")?;
 
+    #[cfg(feature = "llm")]
     let (ai_updates_tx, mut ai_updates_rx) = mpsc::unbounded_channel();
+    #[cfg(feature = "llm")]
     let mut ai_preprocess_handle = if drill_preprocessor.llm_required() {
         let ai_cards = cards.clone();
         Some(tokio::spawn(async move {
@@ -226,6 +249,8 @@ async fn start_drill_session(
     } else {
         None
     };
+    #[cfg(not(feature = "llm"))]
+    let _ = drill_preprocessor; // Avoid unused variable warnings
 
     let mut state = DrillState::new(db, cards, retention);
 
@@ -235,10 +260,12 @@ async fn start_drill_session(
                 break Ok(());
             }
 
+            #[cfg(feature = "llm")]
             while let Ok(update) = ai_updates_rx.try_recv() {
                 state.apply_ai_update(update);
             }
 
+            #[cfg(feature = "llm")]
             if let Some(handle) = &mut ai_preprocess_handle
                 && handle.is_finished()
             {
@@ -263,6 +290,7 @@ async fn start_drill_session(
                         .constraints([Constraint::Min(5), Constraint::Length(5)])
                         .split(area);
 
+                    #[allow(unused_mut)] // Quiet warning on non llm compile
                     let mut header_vec = vec![
                         Theme::label_span(format!(
                             "Card {}/{}",
@@ -274,6 +302,7 @@ async fn start_drill_session(
                         Theme::bullet(),
                         Theme::span(card.file_path.display().to_string()),
                     ];
+                    #[cfg(feature = "llm")]
                     if card.ai_status == AIStatus::AiEnhanced {
                         header_vec.push(Theme::bullet());
                         header_vec.push(Theme::key_chip("AI enhanced"));
@@ -444,6 +473,7 @@ fn format_card_text(card: &Card, show_answer: bool) -> String {
     }
 }
 
+#[cfg(feature = "llm")]
 async fn preprocess_cards_in_order(
     drill_preprocessor: DrillPreprocessor,
     cards: Vec<Card>,
