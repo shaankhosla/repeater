@@ -1,12 +1,20 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+#[cfg(feature = "llm")]
+use anyhow::bail;
+use anyhow::{Context, Result};
+
 use clap::{Parser, Subcommand, ValueHint};
 
 use repeater::commands::{check, create, drill};
 use repeater::crud::DB;
+use repeater::import;
+#[cfg(feature = "llm")]
+use repeater::llm;
+#[cfg(feature = "llm")]
 use repeater::llm::client;
-use repeater::{import, llm, palette::Palette};
+#[cfg(feature = "llm")]
+use repeater::palette::Palette;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -81,6 +89,7 @@ enum Command {
         export_path: PathBuf,
     },
     /// Manage LLM helper settings
+    #[cfg(feature = "llm")]
     Llm {
         /// Store a new API key in the local auth file
         #[arg(long, conflicts_with = "clear")]
@@ -130,12 +139,14 @@ async fn run_cli() -> Result<()> {
             import::run(&db, &anki_path, &export_path)
                 .await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeater")?
         },
+        #[cfg(feature = "llm")]
         Command::Llm { set, clear, test } => handle_llm_command(set, clear, test).await?,
     }
 
     Ok(())
 }
 
+#[cfg(feature = "llm")]
 async fn handle_llm_command(set: bool, clear: bool, test: bool) -> Result<()> {
     let mut action_taken = false;
 
