@@ -36,8 +36,25 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
     let mut cloze_lines: Vec<&str> = Vec::new();
 
     let mut section = Section::None;
+    let mut in_code_block = false;
 
     for raw_line in contents.lines() {
+        // Track fenced code blocks so we preserve indentation inside them
+        if raw_line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+        }
+
+        if in_code_block || raw_line.trim_start().starts_with("```") {
+            // Inside a code block: preserve the raw line exactly
+            match section {
+                Section::Question => question_lines.push(raw_line),
+                Section::Answer => answer_lines.push(raw_line),
+                Section::Cloze => cloze_lines.push(raw_line),
+                Section::None => {}
+            }
+            continue;
+        }
+
         let trimmed = trim_line(raw_line);
 
         if trimmed.is_none() {
@@ -553,6 +570,10 @@ mod tests {
             assert_eq!(question, "some rust code?");
             assert!(answer.contains("#[tokio::main]"));
             assert!(answer.contains("std::process::exit(1);"));
+            assert!(
+                answer.contains("    if let Err(err)"),
+                "code block indentation should be preserved, got:\n{answer}"
+            );
         } else {
             panic!("Expected CardContent::Basic");
         }
