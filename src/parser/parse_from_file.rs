@@ -86,14 +86,16 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
             continue;
         }
 
-        if let Some((left, right)) = line.split_once("::") {
-            if let Some(left) = trim_line(left)
-                && let Some(right) = trim_line(right)
-            {
-                question_lines.push(left);
-                answer_lines.push(right);
+        if matches!(section, Section::None) {
+            if let Some((left, right)) = line.split_once("::") {
+                if let Some(left) = trim_line(left)
+                    && let Some(right) = trim_line(right)
+                {
+                    question_lines.push(left);
+                    answer_lines.push(right);
+                }
+                break;
             }
-            break;
         }
 
         match section {
@@ -527,6 +529,30 @@ mod tests {
         let content = "   \n  \n  ";
         let result = content_to_card(&card_path, content, 0, 1);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_sample_code() {
+        let card_path = PathBuf::from("test.md");
+        let content = r##"Q: some rust code?
+A:
+```
+#[tokio::main]
+async fn main() {
+    if let Err(err) = run_cli().await {
+        eprintln!("{:?}", err);
+        std::process::exit(1);
+    }
+}
+```
+"##;
+        let card = content_to_card(&card_path, content, 0, 1).unwrap();
+        if let CardContent::Basic { question, answer } = &card.content {
+            assert_eq!(question, "some rust code?");
+            assert!(answer.contains("#[tokio::main]"));
+        } else {
+            panic!("Expected CardContent::Basic");
+        }
     }
 
     #[test]
