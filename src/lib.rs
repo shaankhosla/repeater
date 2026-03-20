@@ -5,6 +5,7 @@ pub mod commands;
 pub mod crud;
 pub mod fsrs;
 pub mod import;
+#[cfg(feature = "llm")]
 pub mod llm;
 pub mod palette;
 pub mod parser;

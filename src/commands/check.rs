@@ -1,5 +1,6 @@
+#[cfg(feature = "network")]
+use crate::check_version::{check_version, prompt_for_new_version};
 use crate::{
-    check_version::{check_version, prompt_for_new_version},
     crud::DB,
     palette::Palette,
     parser::{FileSearchStats, register_all_cards},
@@ -31,11 +32,13 @@ use ratatui::{
 };
 
 pub async fn run(db: &DB, paths: Vec<PathBuf>, plain: bool) -> Result<usize> {
+    #[cfg(feature = "network")]
     let version_check = tokio::spawn(check_version(db.clone()));
 
     let (card_hashes, file_traversal_stats) = register_all_cards(db, paths).await?;
     let count = card_hashes.len();
     let crud_stats = db.collection_stats(&card_hashes).await?;
+    #[cfg(feature = "network")]
     if let Some(notification) = version_check.await.ok().flatten() {
         prompt_for_new_version(db, &notification).await;
     }

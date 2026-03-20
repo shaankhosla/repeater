@@ -1,17 +1,20 @@
+#[cfg(feature = "network")]
 use crate::{crud::DB, palette::Palette};
 
-use std::{
-    io::{self, Write},
-    time::Duration,
-};
-
+#[cfg(feature = "network")]
 use anyhow::Result;
+#[cfg(feature = "network")]
 use serde::Deserialize;
+#[cfg(feature = "network")]
+use std::io::{self, Write};
+use std::time::Duration;
 
+#[cfg(feature = "network")]
 const TIMEOUT: u64 = 900;
 pub const ONE_DAY: Duration = Duration::from_secs(60 * 60 * 24);
 pub const ONE_WEEK: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 
+#[cfg(feature = "network")]
 #[derive(Deserialize, Debug)]
 struct Release {
     tag_name: String,
@@ -29,6 +32,7 @@ pub struct VersionUpdateStats {
     pub last_version_check_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[cfg(feature = "network")]
 fn should_notify(now: chrono::DateTime<chrono::Utc>, stats: &VersionUpdateStats) -> bool {
     if let Some(last_check) = stats.last_version_check_at
         && now.signed_duration_since(last_check) < chrono::Duration::from_std(ONE_DAY).unwrap()
@@ -45,6 +49,7 @@ fn should_notify(now: chrono::DateTime<chrono::Utc>, stats: &VersionUpdateStats)
     true
 }
 
+#[cfg(feature = "network")]
 pub async fn check_version(db: DB) -> Option<VersionNotification> {
     let now = chrono::Utc::now();
     let version_update_stats = db.get_version_update_information().await.ok()?;
@@ -77,6 +82,7 @@ pub async fn check_version(db: DB) -> Option<VersionNotification> {
     })
 }
 
+#[cfg(feature = "network")]
 async fn get_latest() -> Result<Release> {
     let client = reqwest::Client::new();
 
@@ -95,6 +101,7 @@ async fn get_latest() -> Result<Release> {
     Ok(release)
 }
 
+#[cfg(feature = "network")]
 pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification) {
     db.update_last_prompted_at().await.ok();
 
@@ -123,6 +130,7 @@ pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification)
     let _ = io::stdin().read_line(&mut input);
 }
 
+#[cfg(feature = "network")]
 fn normalize_version(version: &str) -> String {
     version.trim().trim_start_matches(['v', 'V']).to_string()
 }
