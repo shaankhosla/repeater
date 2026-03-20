@@ -36,8 +36,25 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
     let mut cloze_lines: Vec<&str> = Vec::new();
 
     let mut section = Section::None;
+    let mut in_code_block = false;
 
     for raw_line in contents.lines() {
+        // Track fenced code blocks so we preserve indentation inside them
+        if raw_line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+        }
+
+        if in_code_block || raw_line.trim_start().starts_with("```") {
+            // Inside a code block: preserve the raw line exactly
+            match section {
+                Section::Question => question_lines.push(raw_line),
+                Section::Answer => answer_lines.push(raw_line),
+                Section::Cloze => cloze_lines.push(raw_line),
+                Section::None => {}
+            }
+            continue;
+        }
+
         let trimmed = trim_line(raw_line);
 
         if trimmed.is_none() {
@@ -86,7 +103,9 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
             continue;
         }
 
-        if let Some((left, right)) = line.split_once("::") {
+        if matches!(section, Section::None)
+            && let Some((left, right)) = line.split_once("::")
+        {
             if let Some(left) = trim_line(left)
                 && let Some(right) = trim_line(right)
             {
@@ -246,12 +265,11 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
             }
             start_idx = line_idx;
         }
-        if line.contains("::") {
+        if !track_buffer && line.contains("::") {
             if trim_line(&buffer).is_some() {
                 cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
                 buffer.clear();
             }
-            track_buffer = false;
             cards.push(content_to_card(path, &line, line_idx, line_idx)?);
         }
         if line.starts_with("---") && trim_line(&buffer).is_some() {
@@ -527,6 +545,38 @@ mod tests {
         let content = "   \n  \n  ";
         let result = content_to_card(&card_path, content, 0, 1);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn content_sample_code() {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("code_card.md");
+        let content = "Q: some rust code?\nA:\n```\n#[tokio::main]\nasync fn main() {\n    if let Err(err) = run_cli().await {\n        eprintln!(\"{:?}\", err);\n        std::process::exit(1);\n    }\n}\n```\n";
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(content.as_bytes())
+            .unwrap();
+
+        let cards = cards_from_md(&file_path).unwrap();
+        assert_eq!(
+            cards.len(),
+            1,
+            "expected exactly one card, got {}",
+            cards.len()
+        );
+        if let CardContent::Basic { question, answer } = &cards[0].content {
+            assert_eq!(question, "some rust code?");
+            assert!(answer.contains("#[tokio::main]"));
+            assert!(answer.contains("std::process::exit(1);"));
+            assert!(
+                answer.contains("    if let Err(err)"),
+                "code block indentation should be preserved, got:\n{answer}"
+            );
+        } else {
+            panic!("Expected CardContent::Basic");
+        }
     }
 
     #[test]
