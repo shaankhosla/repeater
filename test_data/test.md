@@ -36,4 +36,5 @@ A: A running instance of an image.
 ---
 
 C: the moon revolves around the earth
+---
 what style is this?::remnote style

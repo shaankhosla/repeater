@@ -86,16 +86,16 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
             continue;
         }
 
-        if matches!(section, Section::None) {
-            if let Some((left, right)) = line.split_once("::") {
-                if let Some(left) = trim_line(left)
-                    && let Some(right) = trim_line(right)
-                {
-                    question_lines.push(left);
-                    answer_lines.push(right);
-                }
-                break;
+        if matches!(section, Section::None)
+            && let Some((left, right)) = line.split_once("::")
+        {
+            if let Some(left) = trim_line(left)
+                && let Some(right) = trim_line(right)
+            {
+                question_lines.push(left);
+                answer_lines.push(right);
             }
+            break;
         }
 
         match section {
@@ -248,12 +248,11 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
             }
             start_idx = line_idx;
         }
-        if line.contains("::") {
+        if !track_buffer && line.contains("::") {
             if trim_line(&buffer).is_some() {
                 cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
                 buffer.clear();
             }
-            track_buffer = false;
             cards.push(content_to_card(path, &line, line_idx, line_idx)?);
         }
         if line.starts_with("---") && trim_line(&buffer).is_some() {
@@ -533,23 +532,27 @@ mod tests {
 
     #[test]
     fn content_sample_code() {
-        let card_path = PathBuf::from("test.md");
-        let content = r##"Q: some rust code?
-A:
-```
-#[tokio::main]
-async fn main() {
-    if let Err(err) = run_cli().await {
-        eprintln!("{:?}", err);
-        std::process::exit(1);
-    }
-}
-```
-"##;
-        let card = content_to_card(&card_path, content, 0, 1).unwrap();
-        if let CardContent::Basic { question, answer } = &card.content {
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("code_card.md");
+        let content = "Q: some rust code?\nA:\n```\n#[tokio::main]\nasync fn main() {\n    if let Err(err) = run_cli().await {\n        eprintln!(\"{:?}\", err);\n        std::process::exit(1);\n    }\n}\n```\n";
+        std::fs::File::create(&file_path)
+            .unwrap()
+            .write_all(content.as_bytes())
+            .unwrap();
+
+        let cards = cards_from_md(&file_path).unwrap();
+        assert_eq!(
+            cards.len(),
+            1,
+            "expected exactly one card, got {}",
+            cards.len()
+        );
+        if let CardContent::Basic { question, answer } = &cards[0].content {
             assert_eq!(question, "some rust code?");
             assert!(answer.contains("#[tokio::main]"));
+            assert!(answer.contains("std::process::exit(1);"));
         } else {
             panic!("Expected CardContent::Basic");
         }
