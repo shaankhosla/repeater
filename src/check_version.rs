@@ -115,7 +115,7 @@ pub async fn prompt_for_new_version(db: &DB, notification: &VersionNotification)
 
     println!(
         "{}",
-        Palette::dim("Press any key to dismiss (I'll remind you again in a few days)")
+        Palette::dim("Press Enter to dismiss (I'll remind you again in a few days)")
     );
     let _ = io::stdout().flush();
 
