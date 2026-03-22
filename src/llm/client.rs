@@ -56,8 +56,7 @@ pub async fn test_configured_api_key() -> Result<ApiKeySource> {
             API_KEY_ENV
         )
     })?;
-    let client = initialize_client(&llm_auth)?;
-    get_models(&client).await?;
+    get_models(&llm_auth).await?;
     Ok(source)
 }
 
@@ -74,16 +73,55 @@ pub fn initialize_client(llm_auth: &ProviderAuth) -> Result<Client<OpenAIConfig>
     Ok(client)
 }
 
-pub async fn get_models(client: &Client<OpenAIConfig>) -> Result<Vec<String>> {
-    let models = client
-        .models()
-        .list()
+pub async fn get_models(auth: &ProviderAuth) -> Result<Vec<String>> {
+    let base_url = auth.base_url.trim_end_matches('/');
+    let url = format!("{}/models", base_url);
+
+    let mut request = reqwest::Client::new().get(&url);
+
+    if let Some(key) = &auth.key {
+        request = request.header("Authorization", format!("Bearer {}", key));
+    }
+
+    let response = request
+        .send()
         .await
-        .context("Failed to fetch models from provider")?
-        .data
-        .iter()
-        .map(|m| m.id.clone())
-        .collect();
+        .context("Failed to fetch models from provider")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        bail!("Model list request failed ({}): {}", status, error_text);
+    }
+
+    let parsed: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse models response")?;
+
+    let mut models = Vec::new();
+
+    // Handle OpenAI format: { data: [ { id: "..." }, ... ] }
+    if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
+        for entry in data {
+            if let Some(id) = entry.get("id").and_then(|i| i.as_str()) {
+                models.push(id.to_string());
+            } else if let Some(name) = entry.get("name").and_then(|n| n.as_str()) {
+                models.push(name.to_string());
+            }
+        }
+    }
+    // Handle plain array format: [ "model1", "model2", ... ]
+    else if let Some(array) = parsed.as_array() {
+        for entry in array {
+            if let Some(model) = entry.as_str() {
+                models.push(model.to_string());
+            }
+        }
+    }
 
     Ok(models)
 }

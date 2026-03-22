@@ -12,7 +12,6 @@ use dialoguer::{Password, theme::ColorfulTheme};
 use serde::{Deserialize, Serialize};
 
 use crate::llm::client::get_models;
-use crate::llm::client::initialize_client;
 use crate::llm::provider::LLM_PROVIDERS;
 use crate::palette::Palette;
 use crate::utils::get_data_dir;
@@ -119,8 +118,7 @@ pub async fn prompt_for_llm_details(prompt: &str) -> Result<ProviderAuth> {
         base_url,
         model: "".to_string(),
     };
-    let client = initialize_client(&auth)?;
-    let models = get_models(&client)
+    let models = get_models(&auth)
         .await
         .with_context(|| "Failed to connect to provider")?;
 
