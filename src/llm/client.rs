@@ -86,6 +86,7 @@ pub fn initialize_client(llm_auth: &ProviderAuth) -> Result<reqwest::Client> {
     let headers = build_headers(llm_auth)?;
     let client = reqwest::Client::builder()
         .default_headers(headers)
+        .user_agent("repeater")
         .build()
         .context("Failed to build HTTP client")?;
     Ok(client)

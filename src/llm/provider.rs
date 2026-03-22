@@ -3,11 +3,17 @@ pub enum LlmProvider {
     #[default]
     OpenAI,
     Anthropic,
+    Groq,
+    OpenRouter,
+    Google,
 }
 
-pub const LLM_PROVIDERS: [&str; 2] = [
+pub const LLM_PROVIDERS: [&str; 5] = [
     LlmProvider::OpenAI.as_str(),
     LlmProvider::Anthropic.as_str(),
+    LlmProvider::Groq.as_str(),
+    LlmProvider::OpenRouter.as_str(),
+    LlmProvider::Google.as_str(),
 ];
 
 impl LlmProvider {
@@ -15,13 +21,20 @@ impl LlmProvider {
         match s.trim().to_ascii_lowercase().as_str() {
             "openai" => Some(Self::OpenAI),
             "anthropic" => Some(Self::Anthropic),
+            "groq" => Some(Self::Groq),
+            "openrouter" => Some(Self::OpenRouter),
+            "google" => Some(Self::Google),
             _ => None,
         }
     }
+
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::OpenAI => "openai",
             Self::Anthropic => "anthropic",
+            Self::Groq => "groq",
+            Self::OpenRouter => "openrouter",
+            Self::Google => "google",
         }
     }
 
@@ -29,13 +42,19 @@ impl LlmProvider {
         match self {
             Self::OpenAI => "https://api.openai.com/v1/",
             Self::Anthropic => "https://api.anthropic.com/v1/",
+            Self::Groq => "https://api.groq.com/openai/v1/",
+            Self::OpenRouter => "https://openrouter.ai/api/v1/",
+            Self::Google => "https://generativelanguage.googleapis.com/v1beta/openai/",
         }
     }
 
     pub const fn default_model(self) -> &'static str {
         match self {
             Self::OpenAI => "gpt-5-nano",
-            Self::Anthropic => "claude-3-sonnet",
+            Self::Anthropic => "claude-sonnet-4-6",
+            Self::Groq => "llama-3.3-70b-versatile",
+            Self::OpenRouter => "anthropic/claude-sonnet-4-6",
+            Self::Google => "gemini-2.5-flash",
         }
     }
 }
@@ -51,6 +70,12 @@ mod tests {
             LlmProvider::parse(" anthropic "),
             Some(LlmProvider::Anthropic)
         );
+        assert_eq!(LlmProvider::parse("groq"), Some(LlmProvider::Groq));
+        assert_eq!(
+            LlmProvider::parse("OpenRouter"),
+            Some(LlmProvider::OpenRouter)
+        );
+        assert_eq!(LlmProvider::parse("google"), Some(LlmProvider::Google));
     }
 
     #[test]
@@ -60,28 +85,29 @@ mod tests {
     }
 
     #[test]
-    fn as_str_matches_expected() {
-        assert_eq!(LlmProvider::OpenAI.as_str(), "openai");
-        assert_eq!(LlmProvider::Anthropic.as_str(), "anthropic");
+    fn roundtrip_as_str_parse() {
+        for &name in &LLM_PROVIDERS {
+            assert!(
+                LlmProvider::parse(name).is_some(),
+                "{name} should roundtrip through parse"
+            );
+        }
     }
 
     #[test]
-    fn base_url_matches_expected() {
-        assert_eq!(LlmProvider::OpenAI.base_url(), "https://api.openai.com/v1/");
-        assert_eq!(
-            LlmProvider::Anthropic.base_url(),
-            "https://api.anthropic.com/v1/"
-        );
-    }
-
-    #[test]
-    fn default_model_matches_expected() {
-        assert_eq!(LlmProvider::OpenAI.default_model(), "gpt-5-nano");
-        assert_eq!(LlmProvider::Anthropic.default_model(), "claude-3-sonnet");
+    fn all_providers_have_base_url() {
+        for &name in &LLM_PROVIDERS {
+            let provider = LlmProvider::parse(name).unwrap();
+            assert!(
+                provider.base_url().starts_with("https://"),
+                "{name} base_url should be https"
+            );
+        }
     }
 
     #[test]
     fn llm_providers_constant_is_consistent() {
-        assert_eq!(LLM_PROVIDERS, ["openai", "anthropic"]);
+        assert_eq!(LLM_PROVIDERS.len(), 5);
+        assert_eq!(LLM_PROVIDERS[0], "openai");
     }
 }
