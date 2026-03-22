@@ -1,96 +1,101 @@
 use anyhow::{Context, Result, bail};
-use async_openai::types::{
-    chat::{
-        ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
-        CreateChatCompletionRequestArgs,
-    },
-    responses::{CreateResponseArgs, InputMessage, InputRole},
-};
+use serde::{Deserialize, Serialize};
 
 use super::LlmClient;
-use serde_json::Value;
 
 const MAX_TOKENS: u32 = 5000;
+
+#[derive(Debug, Serialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ChatCompletionRequest {
+    model: String,
+    max_tokens: u32,
+    messages: Vec<ChatMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoice {
+    message: ChatMessageResponse,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatMessageResponse {
+    content: Option<String>,
+}
 
 pub async fn request_single_text_response(
     client: &LlmClient,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
-    match chat_response(client, system_prompt, user_prompt).await {
-        Ok(resp) => Ok(resp),
-        Err(primary_err) => chat_completion(client, system_prompt, user_prompt)
-            .await
-            .with_context(|| {
-                format!("Fallback chat_completion failed after responses API error: {primary_err}")
-            }),
-    }
+    chat_completion(client, system_prompt, user_prompt).await
 }
 
-async fn chat_response(
-    client: &LlmClient,
-    system_prompt: &str,
-    user_prompt: &str,
-) -> Result<String> {
-    let request = CreateResponseArgs::default()
-        .model(client.llm_auth.model.as_str())
-        .max_output_tokens(MAX_TOKENS)
-        .input(vec![
-            InputMessage {
-                role: InputRole::System,
-                content: vec![system_prompt.into()],
-                status: None,
-            },
-            InputMessage {
-                role: InputRole::User,
-                content: vec![user_prompt.into()],
-                status: None,
-            },
-        ])
-        .build()?;
-
-    let response: Value = client
-        .client
-        .responses()
-        .create_byot(request)
-        .await
-        .with_context(|| "Failed to get response from LLM")?;
-
-    if let Some(content) = response["output"][0]["content"][0]["text"].as_str() {
-        let trimmed_content = content.trim();
-        if !trimmed_content.is_empty() {
-            return Ok(trimmed_content.to_string());
-        }
-    }
-
-    bail!(format!("Invalid response from model:\n{response}"))
-}
 async fn chat_completion(
     client: &LlmClient,
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String> {
-    let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(MAX_TOKENS)
-        .model(client.llm_auth.model.as_str())
-        .messages([
-            ChatCompletionRequestSystemMessage::from(system_prompt).into(),
-            ChatCompletionRequestUserMessage::from(user_prompt).into(),
-        ])
-        .build()?;
+    let base_url = client.llm_auth.base_url.trim_end_matches('/');
+    let url = format!("{}/chat/completions", base_url);
 
-    let response: Value = client
+    let request_body = ChatCompletionRequest {
+        model: client.llm_auth.model.clone(),
+        max_tokens: MAX_TOKENS,
+        messages: vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt.to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_prompt.to_string(),
+            },
+        ],
+    };
+
+    let response = client
         .client
-        .chat()
-        .create_byot(request)
+        .post(&url)
+        .json(&request_body)
+        .send()
         .await
-        .with_context(|| "Failed to get response from LLM")?;
+        .context("Failed to send chat completion request")?;
 
-    if let Some(content) = response["choices"][0]["message"]["content"].as_str() {
-        let trimmed_content = content.trim();
-        if !trimmed_content.is_empty() {
-            return Ok(trimmed_content.to_string());
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        bail!("Chat completion failed ({}): {}", status, error_text);
+    }
+
+    let completion: ChatCompletionResponse = response
+        .json()
+        .await
+        .context("Failed to parse chat completion response")?;
+
+    if let Some(content) = completion
+        .choices
+        .first()
+        .and_then(|c| c.message.content.as_ref())
+    {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
         }
     }
-    bail!(format!("Invalid response from model:\n{response}"))
+
+    bail!("Empty response from model")
 }

@@ -1,8 +1,7 @@
 use crate::llm::secrets::API_KEY_ENV;
 use crate::utils::ask_yn;
 use anyhow::{Context, Result, anyhow, bail};
-
-use async_openai::{Client, config::OpenAIConfig};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 
 use super::secrets::{
     ApiKeySource, ProviderAuth, get_api_key_from_sources, prompt_for_llm_details, store_llm_details,
@@ -10,8 +9,31 @@ use super::secrets::{
 
 #[derive(Clone, Debug)]
 pub struct LlmClient {
-    pub client: Client<OpenAIConfig>,
+    pub client: reqwest::Client,
     pub llm_auth: ProviderAuth,
+}
+
+fn build_headers(auth: &ProviderAuth) -> Result<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+    if let Some(key) = &auth.key {
+        if auth.name == "Anthropic" {
+            headers.insert(
+                "x-api-key",
+                HeaderValue::from_str(key).context("Invalid API key header value")?,
+            );
+            headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+        } else {
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {}", key))
+                    .context("Invalid authorization header value")?,
+            );
+        }
+    }
+
+    Ok(headers)
 }
 
 pub async fn ensure_client(user_prompt: &str) -> Result<LlmClient> {
@@ -60,16 +82,12 @@ pub async fn test_configured_api_key() -> Result<ApiKeySource> {
     Ok(source)
 }
 
-pub fn initialize_client(llm_auth: &ProviderAuth) -> Result<Client<OpenAIConfig>> {
-    let mut config = OpenAIConfig::new();
-
-    if let Some(key) = &llm_auth.key {
-        config = config.with_api_key(key);
-    }
-
-    config = config.with_api_base(llm_auth.base_url.clone());
-
-    let client = Client::with_config(config);
+pub fn initialize_client(llm_auth: &ProviderAuth) -> Result<reqwest::Client> {
+    let headers = build_headers(llm_auth)?;
+    let client = reqwest::Client::builder()
+        .default_headers(headers)
+        .build()
+        .context("Failed to build HTTP client")?;
     Ok(client)
 }
 
@@ -77,13 +95,10 @@ pub async fn get_models(auth: &ProviderAuth) -> Result<Vec<String>> {
     let base_url = auth.base_url.trim_end_matches('/');
     let url = format!("{}/models", base_url);
 
-    let mut request = reqwest::Client::new().get(&url);
+    let client = initialize_client(auth)?;
 
-    if let Some(key) = &auth.key {
-        request = request.header("Authorization", format!("Bearer {}", key));
-    }
-
-    let response = request
+    let response = client
+        .get(&url)
         .send()
         .await
         .context("Failed to fetch models from provider")?;
