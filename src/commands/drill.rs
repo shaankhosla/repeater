@@ -7,6 +7,7 @@ use crate::cloze_utils::mask_cloze_text;
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
+use crate::notes::register_apple_notes_cards;
 use crate::palette::Palette;
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
@@ -44,9 +45,14 @@ pub async fn run(
     rephrase_questions: bool,
     shuffle: bool,
     retention: f32,
+    apple_notes: bool,
 ) -> Result<()> {
     validate_retention(retention)?;
-    let (hash_cards, _) = register_all_cards(db, paths).await?;
+    let (hash_cards, _) = if apple_notes {
+        register_apple_notes_cards(db).await?
+    } else {
+        register_all_cards(db, paths).await?
+    };
     let mut cards_due_today = db
         .due_today(&hash_cards, card_limit, new_card_limit)
         .await?;

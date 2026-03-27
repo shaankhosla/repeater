@@ -51,6 +51,9 @@ enum Command {
         /// Goal retention FSRS should use, this is your target probability of recalling a card at review time.
         #[arg(long, default_value_t = 0.9)]
         retention: f32,
+        /// Drill cards from Apple Notes instead of local files (macOS only).
+        #[arg(long, default_value_t = false)]
+        apple_notes: bool,
     },
     /// Re-index decks and show collection stats
     Check {
@@ -64,6 +67,9 @@ enum Command {
         /// Print a plain summary instead of the TUI dashboard
         #[arg(long, default_value_t = false)]
         plain: bool,
+        /// Check cards from Apple Notes instead of local files (macOS only).
+        #[arg(long, default_value_t = false)]
+        apple_notes: bool,
     },
     /// Create or append to a card
     Create {
@@ -114,11 +120,12 @@ async fn run_cli() -> Result<()> {
             rephrase_questions,
             shuffle,
             retention,
+            apple_notes,
         } => {
-            drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions, shuffle, retention).await?;
+            drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions, shuffle, retention, apple_notes).await?;
         }
-        Command::Check { paths, plain } => {
-            let _ = check::run(&db, paths, plain).await?;
+        Command::Check { paths, plain, apple_notes } => {
+            let _ = check::run(&db, paths, plain, apple_notes).await?;
         }
         Command::Create { path } => {
             create::run(&db, path).await?;

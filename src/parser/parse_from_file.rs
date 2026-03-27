@@ -1,7 +1,5 @@
 use crate::cloze_utils::find_cloze_ranges;
 use ignore::WalkBuilder;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
 use crate::card::{Card, CardContent, ClozeRange};
@@ -238,24 +236,15 @@ pub fn content_to_card(
     }
 }
 
-pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
-    let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
-
+pub fn cards_from_text(path: &Path, text: &str) -> Result<Vec<Card>> {
     let mut cards = Vec::new();
     let mut track_buffer = false;
     let mut buffer = String::new();
-    let mut line = String::new();
     let mut start_idx = 0;
     let mut last_idx = 0;
-    let mut line_idx = 0;
 
-    loop {
-        line.clear();
-        let bytes_read = reader.read_line(&mut line)?;
-        if bytes_read == 0 {
-            break;
-        }
+    for (line_idx, line_content) in text.lines().enumerate() {
+        let line = format!("{}\n", line_content);
 
         if line.starts_with("Q:") || line.starts_with("C:") {
             track_buffer = true;
@@ -281,13 +270,17 @@ pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
             buffer.push_str(&line);
         }
         last_idx = line_idx;
-        line_idx += 1;
     }
     if !buffer.is_empty() {
         cards.push(content_to_card(path, &buffer, start_idx, last_idx + 1)?);
     }
 
     Ok(cards)
+}
+
+pub fn cards_from_md(path: &Path) -> Result<Vec<Card>> {
+    let text = std::fs::read_to_string(path)?;
+    cards_from_text(path, &text)
 }
 
 fn markdown_walk_builder(paths: &[PathBuf]) -> Result<Option<WalkBuilder>> {

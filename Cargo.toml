@@ -33,6 +33,8 @@ open = "5"
 dialoguer = {version="0.12.0", features=["password", "fuzzy-select"]}
 fsrs = "5.2.0"
 rand = "0.10"
+prost = "0.13"
+flate2 = "1"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["async_tokio" ] }
