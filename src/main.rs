@@ -49,7 +49,7 @@ enum Command {
         #[arg(long = "rephrase", default_value_t = false)]
         rephrase_questions: bool,
         /// Randomize the order of cards in the drill session.
-        #[arg(long, default_value_t = false)]
+        #[arg(long, default_value_t = true)]
         shuffle: bool,
         /// Goal retention FSRS should use, this is your target probability of recalling a card at review time.
         #[arg(long, default_value_t = 0.9)]

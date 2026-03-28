@@ -64,7 +64,6 @@ pub async fn register_apple_notes_cards(
     pool.close().await;
 
     let mut hash_cards = HashMap::new();
-    let mut notes_processed = 0;
 
     for row in &rows {
         let title: &str = row.try_get("title").unwrap_or("Untitled");
@@ -97,7 +96,6 @@ pub async fn register_apple_notes_cards(
             continue;
         }
 
-        notes_processed += 1;
         db.add_cards_batch(&cards).await?;
         for card in cards {
             hash_cards.insert(card.card_hash.clone(), card);
@@ -106,7 +104,7 @@ pub async fn register_apple_notes_cards(
 
     let stats = FileSearchStats {
         files_searched: rows.len(),
-        markdown_files: notes_processed,
+        markdown_files: 0,
     };
 
     Ok((hash_cards, stats))
