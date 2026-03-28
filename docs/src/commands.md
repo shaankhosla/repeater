@@ -9,6 +9,7 @@ Start a terminal drilling session for one or more files/directories (default: cu
 - `--rephrase`: rephrase basic questions via the LLM helper before the session starts.
 - `--shuffle`: randomize the order of cards in the session.
 - `--retention <FLOAT>`: target recall probability for FSRS scheduling (default: `0.9`, allowed range: `0.65`–`1.0`).
+- `--apple-notes` *(beta)*: source cards from Apple Notes instead of local Markdown files. macOS only — requires Full Disk Access for your terminal (System Settings > Privacy & Security > Full Disk Access). Conflicts with `[PATH ...]`.
 
 Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards. This is just for extra practice, so let's lower the retention rate to `0.7`.
 
@@ -44,6 +45,7 @@ repeater create cards/neuro.md
 Re-index the referenced decks and open the interactive dashboard with totals for new, due, overdue, and upcoming cards (press `Esc`/`Ctrl+C` to exit).
 
 - `--plain`: print a plain-text summary to stdout instead of launching the dashboard.
+- `--apple-notes` *(beta)*: source cards from Apple Notes instead of local Markdown files. macOS only — requires Full Disk Access for your terminal. Conflicts with `[PATH ...]`.
 
 Example:
 
