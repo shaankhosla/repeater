@@ -49,9 +49,9 @@ pub async fn register_apple_notes_cards(
         .context("Failed to open Apple Notes database. Make sure Apple Notes has been used at least once and that your terminal has Full Disk Access (System Settings > Privacy & Security > Full Disk Access).")?;
 
     let rows = sqlx::query(
-        "SELECT n.ZTITLE1 as title, nd.ZDATA as data \
+        "SELECT n.ZTITLE1 as title, note_data.ZDATA as data \
          FROM ZICCLOUDSYNCINGOBJECT n \
-         JOIN ZICNOTEDATA nd ON n.ZNOTEDATA = nd.Z_PK \
+         JOIN ZICNOTEDATA note_data ON n.ZNOTEDATA = note_data.Z_PK \
          LEFT JOIN ZICCLOUDSYNCINGOBJECT f ON n.ZFOLDER = f.Z_PK \
          WHERE n.Z_ENT = 12 \
          AND n.ZMARKEDFORDELETION != 1 \
