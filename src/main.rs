@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueHint};
 
-use repeater::commands::{check, create, drill};
+use repeater::commands::{
+    check, create,
+    drill::{self, DrillOptions},
+};
 use repeater::crud::DB;
 use repeater::llm::client;
 use repeater::{import, llm, palette::Palette};
@@ -46,11 +49,14 @@ enum Command {
         #[arg(long = "rephrase", default_value_t = false)]
         rephrase_questions: bool,
         /// Randomize the order of cards in the drill session.
-        #[arg(long, default_value_t = false)]
+        #[arg(long, default_value_t = true)]
         shuffle: bool,
         /// Goal retention FSRS should use, this is your target probability of recalling a card at review time.
         #[arg(long, default_value_t = 0.9)]
         retention: f32,
+        /// Drill cards from Apple Notes instead of local files (macOS only).
+        #[arg(long, default_value_t = false, conflicts_with = "paths")]
+        apple_notes: bool,
     },
     /// Re-index decks and show collection stats
     Check {
@@ -64,6 +70,9 @@ enum Command {
         /// Print a plain summary instead of the TUI dashboard
         #[arg(long, default_value_t = false)]
         plain: bool,
+        /// Check cards from Apple Notes instead of local files (macOS only).
+        #[arg(long, default_value_t = false, conflicts_with = "paths")]
+        apple_notes: bool,
     },
     /// Create or append to a card
     Create {
@@ -114,11 +123,20 @@ async fn run_cli() -> Result<()> {
             rephrase_questions,
             shuffle,
             retention,
+            apple_notes,
         } => {
-            drill::run(&db, paths, card_limit, new_card_limit, rephrase_questions, shuffle, retention).await?;
+            drill::run(&db, DrillOptions {
+                paths,
+                card_limit,
+                new_card_limit,
+                rephrase_questions,
+                shuffle,
+                retention,
+                apple_notes,
+            }).await?;
         }
-        Command::Check { paths, plain } => {
-            let _ = check::run(&db, paths, plain).await?;
+        Command::Check { paths, plain, apple_notes } => {
+            let _ = check::run(&db, paths, plain, apple_notes).await?;
         }
         Command::Create { path } => {
             create::run(&db, path).await?;

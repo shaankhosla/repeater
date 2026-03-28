@@ -7,6 +7,7 @@ use crate::cloze_utils::mask_cloze_text;
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
+use crate::notes::register_apple_notes_cards;
 use crate::palette::Palette;
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
@@ -36,22 +37,28 @@ use tokio::sync::mpsc;
 const MINUTES_PER_DAY: f64 = 24.0 * 60.0;
 const FLASH_SECS: f64 = 2.0;
 
-pub async fn run(
-    db: &DB,
-    paths: Vec<PathBuf>,
-    card_limit: Option<usize>,
-    new_card_limit: Option<usize>,
-    rephrase_questions: bool,
-    shuffle: bool,
-    retention: f32,
-) -> Result<()> {
-    validate_retention(retention)?;
-    let (hash_cards, _) = register_all_cards(db, paths).await?;
+pub struct DrillOptions {
+    pub paths: Vec<PathBuf>,
+    pub card_limit: Option<usize>,
+    pub new_card_limit: Option<usize>,
+    pub rephrase_questions: bool,
+    pub shuffle: bool,
+    pub retention: f32,
+    pub apple_notes: bool,
+}
+
+pub async fn run(db: &DB, opts: DrillOptions) -> Result<()> {
+    validate_retention(opts.retention)?;
+    let (hash_cards, _) = if opts.apple_notes {
+        register_apple_notes_cards(db).await?
+    } else {
+        register_all_cards(db, opts.paths).await?
+    };
     let mut cards_due_today = db
-        .due_today(&hash_cards, card_limit, new_card_limit)
+        .due_today(&hash_cards, opts.card_limit, opts.new_card_limit)
         .await?;
 
-    if shuffle {
+    if opts.shuffle {
         use rand::seq::SliceRandom;
         cards_due_today.shuffle(&mut rand::rng());
     }
@@ -64,9 +71,10 @@ pub async fn run(
         return Ok(());
     }
 
-    let drill_preprocessor = DrillPreprocessor::new(&cards_due_today, rephrase_questions).await?;
+    let drill_preprocessor =
+        DrillPreprocessor::new(&cards_due_today, opts.rephrase_questions).await?;
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
-    start_drill_session(db, cards_due_today, drill_preprocessor, retention).await?;
+    start_drill_session(db, cards_due_today, drill_preprocessor, opts.retention).await?;
 
     Ok(())
 }
