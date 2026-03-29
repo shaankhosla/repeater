@@ -10,5 +10,6 @@ pub mod notes;
 pub mod palette;
 pub mod parser;
 pub mod stats;
+pub mod sync;
 pub mod tui;
 pub mod utils;

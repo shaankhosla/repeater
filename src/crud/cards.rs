@@ -114,7 +114,8 @@ impl DB {
                 interval_raw = ?,
                 interval_days = ?,
                 due_date = ?,
-                review_count = ?
+                review_count = ?,
+                locally_modified = 1
             WHERE card_hash = ?
             "#,
             new_performance.last_reviewed_at,

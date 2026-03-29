@@ -9,7 +9,10 @@ use repeater::commands::{
 };
 use repeater::crud::DB;
 use repeater::llm::client;
-use repeater::{import, llm, palette::Palette};
+use repeater::palette::Palette;
+use repeater::sync::client::SyncClient;
+use repeater::sync::config::SyncConfig;
+use repeater::{import, llm};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -57,6 +60,9 @@ enum Command {
         /// Drill cards from Apple Notes instead of local files (macOS only).
         #[arg(long, default_value_t = false, conflicts_with = "paths")]
         apple_notes: bool,
+        /// Skip automatic sync before and after the drill session.
+        #[arg(long, default_value_t = false)]
+        no_sync: bool,
     },
     /// Re-index decks and show collection stats
     Check {
@@ -73,6 +79,9 @@ enum Command {
         /// Check cards from Apple Notes instead of local files (macOS only).
         #[arg(long, default_value_t = false, conflicts_with = "paths")]
         apple_notes: bool,
+        /// Skip automatic sync before checking.
+        #[arg(long, default_value_t = false)]
+        no_sync: bool,
     },
     /// Create or append to a card
     Create {
@@ -101,6 +110,28 @@ enum Command {
         #[arg(long, conflicts_with = "clear")]
         test: bool,
     },
+    /// Sync review history across devices
+    Sync {
+        #[command(subcommand)]
+        action: SyncAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum SyncAction {
+    /// Register a new account on the sync server
+    Register,
+    /// Login to an existing account
+    Login,
+    /// Logout and clear local session
+    Logout,
+    /// Show sync status
+    Status,
+    /// Manually push and pull changes
+    Now,
+    /// Start the sync server (requires --features server)
+    #[cfg(feature = "server")]
+    Server,
 }
 
 #[tokio::main]
@@ -124,7 +155,11 @@ async fn run_cli() -> Result<()> {
             shuffle,
             retention,
             apple_notes,
+            no_sync,
         } => {
+            if !no_sync {
+                repeater::sync::sync(&db, true).await.ok();
+            }
             drill::run(&db, DrillOptions {
                 paths,
                 card_limit,
@@ -134,8 +169,14 @@ async fn run_cli() -> Result<()> {
                 retention,
                 apple_notes,
             }).await?;
+            if !no_sync {
+                repeater::sync::sync(&db, true).await.ok();
+            }
         }
-        Command::Check { paths, plain, apple_notes } => {
+        Command::Check { paths, plain, apple_notes, no_sync } => {
+            if !no_sync {
+                repeater::sync::sync(&db, true).await.ok();
+            }
             let _ = check::run(&db, paths, plain, apple_notes).await?;
         }
         Command::Create { path } => {
@@ -149,8 +190,122 @@ async fn run_cli() -> Result<()> {
                 .await.with_context(|| "Importing from Anki is a work in progress, please report issues on https://github.com/shaankhosla/repeater")?
         },
         Command::Llm { set, clear, test } => handle_llm_command(set, clear, test).await?,
+        Command::Sync { action } => handle_sync_command(&db, action).await?,
     }
 
+    Ok(())
+}
+
+async fn handle_sync_command(db: &DB, action: SyncAction) -> Result<()> {
+    match action {
+        SyncAction::Register => {
+            let mut config = SyncConfig::load()?;
+            let client = SyncClient::new(config.clone())?;
+
+            let username: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Username")
+                    .interact_text()?;
+
+            let password: String =
+                dialoguer::Password::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Password (min 8 characters)")
+                    .with_confirmation("Confirm password", "Passwords don't match")
+                    .interact()?;
+
+            let resp = client.register(&username, &password).await?;
+            config.session_token = Some(resp.token);
+            config.username = Some(username.clone());
+            config.save()?;
+
+            println!(
+                "{}",
+                Palette::paint(
+                    Palette::SUCCESS,
+                    format!("Registered as '{}'. Sync is now active.", username)
+                )
+            );
+        }
+        SyncAction::Login => {
+            let mut config = SyncConfig::load()?;
+            let client = SyncClient::new(config.clone())?;
+
+            let username: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Username")
+                    .interact_text()?;
+
+            let password: String =
+                dialoguer::Password::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Password")
+                    .interact()?;
+
+            let resp = client.login(&username, &password).await?;
+            config.session_token = Some(resp.token);
+            config.username = Some(username.clone());
+            config.save()?;
+
+            println!(
+                "{}",
+                Palette::paint(
+                    Palette::SUCCESS,
+                    format!("Logged in as '{}'. Sync is now active.", username)
+                )
+            );
+        }
+        SyncAction::Logout => {
+            let mut config = SyncConfig::load()?;
+            let username = config.username.clone().unwrap_or_default();
+            config.clear_session()?;
+            println!(
+                "{}",
+                Palette::paint(
+                    Palette::SUCCESS,
+                    format!(
+                        "Logged out{}.",
+                        if username.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" (was '{}')", username)
+                        }
+                    )
+                )
+            );
+        }
+        SyncAction::Status => {
+            let config = SyncConfig::load()?;
+            println!("Sync server: {}", config.address);
+            if let Some(username) = &config.username {
+                println!("Logged in as: {}", username);
+                println!("Last synced version: {}", config.last_server_version);
+
+                let client = SyncClient::new(config)?;
+                match client.status().await {
+                    Ok(status) => {
+                        println!("Remote cards: {}", status.card_count);
+                        println!("Remote version: {}", status.latest_version);
+                    }
+                    Err(e) => {
+                        eprintln!("{}", Palette::dim(format!("Could not reach server: {}", e)));
+                    }
+                }
+            } else {
+                println!("Not logged in. Run `repeater sync register` or `repeater sync login`.");
+            }
+        }
+        SyncAction::Now => {
+            let synced = repeater::sync::sync(db, false).await?;
+            if synced {
+                println!("{}", Palette::paint(Palette::SUCCESS, "Sync complete."));
+            } else {
+                println!("Not logged in. Run `repeater sync register` or `repeater sync login`.");
+            }
+        }
+        #[cfg(feature = "server")]
+        SyncAction::Server => {
+            repeater::sync::server::start_server().await?;
+        }
+    }
     Ok(())
 }
 
