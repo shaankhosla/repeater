@@ -200,6 +200,14 @@ async fn handle_sync_command(db: &DB, action: SyncAction) -> Result<()> {
     match action {
         SyncAction::Register => {
             let mut config = SyncConfig::load()?;
+
+            let address: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Sync server address")
+                    .default(config.address.clone())
+                    .interact_text()?;
+            config.address = address;
+
             let client = SyncClient::new(config.clone())?;
 
             let username: String =
@@ -228,6 +236,14 @@ async fn handle_sync_command(db: &DB, action: SyncAction) -> Result<()> {
         }
         SyncAction::Login => {
             let mut config = SyncConfig::load()?;
+
+            let address: String =
+                dialoguer::Input::with_theme(&dialoguer::theme::ColorfulTheme::default())
+                    .with_prompt("Sync server address")
+                    .default(config.address.clone())
+                    .interact_text()?;
+            config.address = address;
+
             let client = SyncClient::new(config.clone())?;
 
             let username: String =
