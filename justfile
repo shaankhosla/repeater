@@ -22,11 +22,7 @@ import:
     cargo run -- import "/Users/shaankhosla/Downloads/All Decks.apkg" "/Users/shaankhosla/Desktop/anki_export/"
 
 sync-server:
-    docker compose up -d
-    REPEATER_DB_URI="postgres://repeater:repeater@localhost/repeater" REPEATER_OPEN_REGISTRATION=true cargo run --features server -- sync server
-
-sync-server-stop:
-    docker compose down
+    docker compose up --build
 
 release:
     just precommit

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cards SET locally_modified = 0 WHERE locally_modified = 1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "00fa808a1dc589ddb72e8da388c791788722025ceeba703efb3316632dd5d787"
+}

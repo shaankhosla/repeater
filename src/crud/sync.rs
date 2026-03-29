@@ -1,5 +1,4 @@
 use anyhow::Result;
-use sqlx::{Row, SqliteExecutor};
 
 use crate::sync::types::{SyncCard, remote_wins};
 
@@ -7,10 +6,21 @@ use super::DB;
 
 impl DB {
     pub async fn get_locally_modified_cards(&self) -> Result<Vec<SyncCard>> {
-        let rows = sqlx::query(
-            "SELECT card_hash, last_reviewed_at, stability, difficulty, interval_raw, \
-             interval_days, due_date, review_count, added_at \
-             FROM cards WHERE locally_modified = 1",
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                card_hash,
+                last_reviewed_at,
+                stability as "stability?: f64",
+                difficulty as "difficulty?: f64",
+                interval_raw as "interval_raw?: f64",
+                interval_days as "interval_days?: i64",
+                due_date,
+                review_count as "review_count!: i64",
+                added_at
+            FROM cards
+            WHERE locally_modified = 1
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -18,15 +28,15 @@ impl DB {
         let cards = rows
             .into_iter()
             .map(|row| SyncCard {
-                card_hash: row.get("card_hash"),
-                last_reviewed_at: row.get("last_reviewed_at"),
-                stability: row.get("stability"),
-                difficulty: row.get("difficulty"),
-                interval_raw: row.get("interval_raw"),
-                interval_days: row.get::<Option<i32>, _>("interval_days").map(|v| v as i64),
-                due_date: row.get("due_date"),
-                review_count: row.get::<i32, _>("review_count") as i64,
-                added_at: row.get("added_at"),
+                card_hash: row.card_hash,
+                last_reviewed_at: row.last_reviewed_at,
+                stability: row.stability,
+                difficulty: row.difficulty,
+                interval_raw: row.interval_raw,
+                interval_days: row.interval_days,
+                due_date: row.due_date,
+                review_count: row.review_count,
+                added_at: row.added_at,
             })
             .collect();
 
@@ -34,17 +44,19 @@ impl DB {
     }
 
     pub async fn clear_locally_modified(&self) -> Result<()> {
-        sqlx::query("UPDATE cards SET locally_modified = 0 WHERE locally_modified = 1")
+        sqlx::query!("UPDATE cards SET locally_modified = 0 WHERE locally_modified = 1")
             .execute(&self.pool)
             .await?;
         Ok(())
     }
 
     pub async fn mark_locally_modified(&self, card_hash: &str) -> Result<()> {
-        sqlx::query("UPDATE cards SET locally_modified = 1 WHERE card_hash = ?1")
-            .bind(card_hash)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query!(
+            "UPDATE cards SET locally_modified = 1 WHERE card_hash = ?",
+            card_hash
+        )
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
@@ -53,23 +65,60 @@ impl DB {
         let mut tx = self.pool.begin().await?;
 
         for card in cards {
-            let local = sqlx::query(
-                "SELECT last_reviewed_at, review_count FROM cards WHERE card_hash = ?1",
+            let local = sqlx::query!(
+                "SELECT last_reviewed_at FROM cards WHERE card_hash = ?",
+                card.card_hash
             )
-            .bind(&card.card_hash)
             .fetch_optional(&mut *tx)
             .await?;
 
+            let interval_days = card.interval_days.map(|v| v as i32);
+            let review_count = card.review_count as i32;
+
             match local {
                 Some(local_row) => {
-                    let local_reviewed_at: Option<String> = local_row.get("last_reviewed_at");
-
-                    if remote_wins(&card.last_reviewed_at, &local_reviewed_at) {
-                        update_card_from_sync(&mut *tx, card).await?;
+                    if remote_wins(&card.last_reviewed_at, &local_row.last_reviewed_at) {
+                        sqlx::query!(
+                            r#"
+                            UPDATE cards
+                            SET last_reviewed_at = ?, stability = ?, difficulty = ?,
+                                interval_raw = ?, interval_days = ?, due_date = ?,
+                                review_count = ?
+                            WHERE card_hash = ?
+                            "#,
+                            card.last_reviewed_at,
+                            card.stability,
+                            card.difficulty,
+                            card.interval_raw,
+                            interval_days,
+                            card.due_date,
+                            review_count,
+                            card.card_hash,
+                        )
+                        .execute(&mut *tx)
+                        .await?;
                     }
                 }
                 None => {
-                    insert_card_from_sync(&mut *tx, card).await?;
+                    sqlx::query!(
+                        r#"
+                        INSERT INTO cards (card_hash, added_at, last_reviewed_at, stability,
+                            difficulty, interval_raw, interval_days, due_date, review_count,
+                            locally_modified)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                        "#,
+                        card.card_hash,
+                        card.added_at,
+                        card.last_reviewed_at,
+                        card.stability,
+                        card.difficulty,
+                        card.interval_raw,
+                        interval_days,
+                        card.due_date,
+                        review_count,
+                    )
+                    .execute(&mut *tx)
+                    .await?;
                 }
             }
         }
@@ -77,51 +126,6 @@ impl DB {
         tx.commit().await?;
         Ok(())
     }
-}
-
-async fn update_card_from_sync<'e, E: SqliteExecutor<'e>>(
-    executor: E,
-    card: &SyncCard,
-) -> Result<()> {
-    sqlx::query(
-        "UPDATE cards SET last_reviewed_at = ?1, stability = ?2, difficulty = ?3, \
-         interval_raw = ?4, interval_days = ?5, due_date = ?6, review_count = ?7 \
-         WHERE card_hash = ?8",
-    )
-    .bind(&card.last_reviewed_at)
-    .bind(card.stability)
-    .bind(card.difficulty)
-    .bind(card.interval_raw)
-    .bind(card.interval_days.map(|v| v as i32))
-    .bind(&card.due_date)
-    .bind(card.review_count as i32)
-    .bind(&card.card_hash)
-    .execute(executor)
-    .await?;
-    Ok(())
-}
-
-async fn insert_card_from_sync<'e, E: SqliteExecutor<'e>>(
-    executor: E,
-    card: &SyncCard,
-) -> Result<()> {
-    sqlx::query(
-        "INSERT INTO cards (card_hash, added_at, last_reviewed_at, stability, difficulty, \
-         interval_raw, interval_days, due_date, review_count, locally_modified) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)",
-    )
-    .bind(&card.card_hash)
-    .bind(&card.added_at)
-    .bind(&card.last_reviewed_at)
-    .bind(card.stability)
-    .bind(card.difficulty)
-    .bind(card.interval_raw)
-    .bind(card.interval_days.map(|v| v as i32))
-    .bind(&card.due_date)
-    .bind(card.review_count as i32)
-    .execute(executor)
-    .await?;
-    Ok(())
 }
 
 #[cfg(test)]

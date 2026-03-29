@@ -1,0 +1,15 @@
+FROM rust:1.90-slim AS builder
+WORKDIR /app
+RUN apt-get update && apt-get install -y pkg-config libdbus-1-dev libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY migrations ./migrations
+COPY benches ./benches
+COPY .sqlx ./.sqlx
+ENV SQLX_OFFLINE=true
+RUN cargo build --release --features server
+
+FROM debian:trixie-slim
+RUN apt-get update && apt-get install -y libssl3t64 ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/repeater /usr/local/bin/repeater
+ENTRYPOINT ["repeater", "sync", "server"]

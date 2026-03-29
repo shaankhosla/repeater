@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                            UPDATE cards\n                            SET last_reviewed_at = ?, stability = ?, difficulty = ?,\n                                interval_raw = ?, interval_days = ?, due_date = ?,\n                                review_count = ?\n                            WHERE card_hash = ?\n                            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "e2f885e47d521f5159330508de05b3eec995cb86872b58e77fc6478cb878273d"
+}

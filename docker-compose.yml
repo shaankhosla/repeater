@@ -7,3 +7,23 @@ services:
       POSTGRES_DB: repeater
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U repeater"]
+      interval: 2s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    environment:
+      REPEATER_DB_URI: postgres://repeater:repeater@postgres/repeater
+      REPEATER_OPEN_REGISTRATION: "true"
+      REPEATER_HOST: "0.0.0.0"
+      REPEATER_PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy

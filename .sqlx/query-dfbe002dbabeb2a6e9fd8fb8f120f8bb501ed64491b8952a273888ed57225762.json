@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last_reviewed_at FROM cards WHERE card_hash = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_reviewed_at",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "dfbe002dbabeb2a6e9fd8fb8f120f8bb501ed64491b8952a273888ed57225762"
+}

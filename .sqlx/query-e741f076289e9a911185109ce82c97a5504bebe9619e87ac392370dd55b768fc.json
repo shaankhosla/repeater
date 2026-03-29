@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                card_hash,\n                last_reviewed_at,\n                stability as \"stability?: f64\",\n                difficulty as \"difficulty?: f64\",\n                interval_raw as \"interval_raw?: f64\",\n                interval_days as \"interval_days?: i64\",\n                due_date,\n                review_count as \"review_count!: i64\",\n                added_at\n            FROM cards\n            WHERE locally_modified = 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "card_hash",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_reviewed_at",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "stability?: f64",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "difficulty?: f64",
+        "ordinal": 3,
+        "type_info": "Float"
+      },
+      {
+        "name": "interval_raw?: f64",
+        "ordinal": 4,
+        "type_info": "Float"
+      },
+      {
+        "name": "interval_days?: i64",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "due_date",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "review_count!: i64",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "added_at",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e741f076289e9a911185109ce82c97a5504bebe9619e87ac392370dd55b768fc"
+}
