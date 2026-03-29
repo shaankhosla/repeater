@@ -1,17 +1,12 @@
-## [0.1.8] - 2026-03-27
+## [0.1.9] - 2026-03-29
 
-### 🐛 Bug Fixes
+### 🚀 Features
 
-- Clarify version update prompt wording (#126)
-- Model listing with openrouter and anthropic (#128)
+- Add ability to use repeater to study apple notes (#135)
 
 ### 💼 Other
 
-- Refine description of `repeater` in README
-
-Removed unnecessary framing in the description of `repeater`.
-- *(deps)* Bump rustls-webpki from 0.103.8 to 0.103.10 (#127)
-
-### 🚜 Refactor
-
-- LLM calls and providers (#129)
+- *(deps)* Bump once_cell from 1.21.3 to 1.21.4 (#133)
+- *(deps)* Bump tempfile from 3.25.0 to 3.27.0 (#132)
+- *(deps)* Bump chrono from 0.4.43 to 0.4.44 (#131)
+- *(deps)* Bump pulldown-cmark from 0.13.1 to 0.13.3 (#130)
