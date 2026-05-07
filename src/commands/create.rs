@@ -2,7 +2,7 @@ use crate::{
     card::CardType,
     crud::DB,
     palette::Palette,
-    parser::{cards_from_md, content_to_card},
+    parser::{cards_from_md, content_to_cards},
     tui::Editor,
     tui::Theme,
     utils::ask_yn,
@@ -71,15 +71,20 @@ fn create_file(path: &Path) -> Result<File> {
     Ok(file)
 }
 
-async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result<()> {
+async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result<usize> {
     let existing_len = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let start_idx = existing_len as usize;
     let end_idx = start_idx + contents.len();
 
-    let card = content_to_card(path, contents, start_idx, end_idx).context("Invalid card")?;
-    let card_exists = db.card_exists(&card).await?;
-    if card_exists {
-        bail!("This card already exists in the database.");
+    let cards = content_to_cards(path, contents, start_idx, end_idx).context("Invalid card")?;
+    if cards.is_empty() {
+        bail!("No reviewable cards found.");
+    }
+
+    for card in &cards {
+        if db.card_exists(card).await? {
+            bail!("This card already exists in the database.");
+        }
     }
 
     let mut file = create_file(path)?;
@@ -88,9 +93,9 @@ async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result
     }
     writeln!(file, "{}", contents)?;
 
-    db.add_card(&card).await?;
+    db.add_cards_batch(&cards).await?;
 
-    Ok(())
+    Ok(cards.len())
 }
 
 async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
@@ -212,12 +217,16 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
                     let contents = editor.content();
                     let save_status = create_card_append_file(db, card_path, &contents).await;
                     match save_status {
-                        Ok(_) => {
+                        Ok(saved_count) => {
                             editor.clear();
-                            card_created_count += 1;
-                            num_cards_in_collection += 1;
+                            card_created_count += saved_count;
+                            num_cards_in_collection += saved_count;
                             card_last_save_attempt = Some(std::time::Instant::now());
-                            status = Some(String::from("Card saved."))
+                            status = Some(if saved_count == 1 {
+                                String::from("Card saved.")
+                            } else {
+                                format!("{saved_count} cards saved.")
+                            })
                         }
                         Err(e) => {
                             card_last_save_attempt = Some(std::time::Instant::now());

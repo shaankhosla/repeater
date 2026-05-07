@@ -248,7 +248,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::fsrs::{Performance, ReviewStatus};
-    use crate::parser::content_to_card;
+    use crate::parser::content_to_cards;
     use crate::stats::CardLifeCycle;
 
     use super::DB;
@@ -260,7 +260,11 @@ mod tests {
 
         // add card
         let db = DB::new_in_memory().await.unwrap();
-        let card = content_to_card(&card_path, content, 1, 1).unwrap();
+        let card = content_to_cards(&card_path, content, 1, 1)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
         db.add_card(&card.clone()).await.unwrap();
 
         // should exist
