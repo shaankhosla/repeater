@@ -90,10 +90,8 @@ pub fn extract_media(markdown: &str, base_dir: Option<&Path>) -> Vec<Media> {
                 }
             }
 
-            Event::Text(text) => {
-                if current_path.is_some() {
-                    current_label.push_str(&text);
-                }
+            Event::Text(text) if current_path.is_some() => {
+                current_label.push_str(&text);
             }
 
             Event::End(TagEnd::Link) => {
