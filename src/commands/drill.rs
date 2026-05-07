@@ -482,6 +482,7 @@ async fn preprocess_cards_in_order(
 #[cfg(test)]
 mod tests {
     use crate::card::ClozeRange;
+    use crate::cloze_utils::find_cloze_ranges;
 
     use super::*;
     use std::path::PathBuf;
@@ -495,9 +496,8 @@ mod tests {
         Card::new(PathBuf::from("test.md"), (0, 1), content, "hash".into())
     }
 
-    fn cloze_card(text: &str) -> Card {
-        let start = text.find('[').unwrap();
-        let end = text[start..].find(']').unwrap() + start + 1;
+    fn cloze_card(text: &str, blank_index: usize) -> Card {
+        let (start, end) = find_cloze_ranges(text)[blank_index];
         Card::new(
             PathBuf::from("test.md"),
             (0, 1),
@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn cloze_card_masks_until_answer_shown() {
-        let card = cloze_card("Value [東京]");
+        let card = cloze_card("Value [東京]", 0);
 
         let masked = format_card_text(&card, false);
         let placeholder = extract_placeholder(&masked);
@@ -531,6 +531,27 @@ mod tests {
 
         let revealed = format_card_text(&card, true);
         assert!(revealed.contains("[東京]"));
+    }
+
+    #[test]
+    fn cloze_card_masks_second_blank_and_leaves_first_visible() {
+        let card = cloze_card(
+            "The [order] of a group is [the cardinality of its underlying set].",
+            1,
+        );
+
+        let masked = format_card_text(&card, false);
+        assert!(masked.contains("[order]"));
+        assert!(!masked.contains("the cardinality of its underlying set"));
+
+        let second_blank_start = masked.rfind('[').unwrap();
+        let second_blank_end = masked[second_blank_start..].find(']').unwrap() + second_blank_start;
+        let placeholder = &masked[second_blank_start + 1..second_blank_end];
+        assert!(placeholder.chars().all(|c| c == '_'));
+
+        let revealed = format_card_text(&card, true);
+        assert!(revealed.contains("[order]"));
+        assert!(revealed.contains("[the cardinality of its underlying set]"));
     }
 
     #[test]

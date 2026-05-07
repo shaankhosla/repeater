@@ -40,6 +40,10 @@ Cards live in everyday Markdown. `repeater` scans for tagged sections and turns 
   C: The [order] of a group is [the cardinality of its underlying set].
   ```
 
+  Each non-empty `[hidden]` span becomes its own review card. In the example above,
+  `repeater` asks one card for `[order]` and another for `[the cardinality of its underlying set]`;
+  the inactive bracketed spans stay visible while the active one is masked.
+
 ## Parsing Logic
 
 - Cards are detected by the presence of `Q:/A:`, `C:`, or `::`. A horizontal rule (`---`) or the start of another card marks the end.
@@ -76,8 +80,8 @@ Cards live in everyday Markdown. `repeater` scans for tagged sections and turns 
   ```markdown
   What is ATP?::
   ```
-- **Cloze blocks need real `[hidden]` text.** Empty brackets or unmatched `[`/`]` abort parsing.
+- **Empty cloze brackets are skipped.** A cloze block with only empty brackets produces no reviewable cards.
   ```markdown
-  C: Bad []    ← rejected
-  C: Half [good   ← rejected
+  C: Skips [] but asks [this]
+  C: Skips [] entirely
   ```

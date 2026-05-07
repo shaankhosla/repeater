@@ -78,6 +78,13 @@ In practice, this means less flexibility but much less friction. You edit cards 
 
 That's it! `repeater` will automatically track progress and schedule reviews.
 
+### Advanced: pair with an agentic CLI
+
+Because decks are plain Markdown, agentic CLIs like [Claude Code](https://claude.com/claude-code) or [Codex](https://github.com/openai/codex) are a natural fit. Two workflows to try:
+
+- **Cards from your notes** — *"Read every file in `notes/` and add `Q:/A:/C:` blocks for the key facts, in place."*
+- **Cards from a topic** — *"Research the Krebs cycle and write a study deck at `cards/krebs.md` using `Q:/A:/C:` syntax."*
+
 
 ## Installation
 
