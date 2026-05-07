@@ -1,12 +1,17 @@
-## [0.1.9] - 2026-03-29
-
-### 🚀 Features
-
-- Add ability to use repeater to study apple notes (#135)
+## [0.1.10] - 2026-05-07
 
 ### 💼 Other
 
-- *(deps)* Bump once_cell from 1.21.3 to 1.21.4 (#133)
-- *(deps)* Bump tempfile from 3.25.0 to 3.27.0 (#132)
-- *(deps)* Bump chrono from 0.4.43 to 0.4.44 (#131)
-- *(deps)* Bump pulldown-cmark from 0.13.1 to 0.13.3 (#130)
+- *(deps)* Bump rand from 0.10.0 to 0.10.1 (#140)
+- *(deps)* Bump clap from 4.5.60 to 4.6.0 (#139)
+- *(deps)* Bump futures from 0.3.31 to 0.3.32 (#138)
+- *(deps)* Bump prost from 0.13.5 to 0.14.3 (#137)
+- *(deps)* Bump tokio from 1.49.0 to 1.50.0 (#136)
+
+### 🚜 Refactor
+
+- Index multiple clozes as different cards (#144)
+
+### 📚 Documentation
+
+- Agentic cli addition
