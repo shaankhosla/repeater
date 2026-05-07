@@ -3,7 +3,7 @@ use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
 use crate::card::{Card, CardContent, ClozeRange};
-use crate::parser::get_hash;
+use crate::parser::{get_cloze_hash, get_hash};
 use crate::utils::{is_markdown, trim_line};
 use ignore::WalkState;
 use std::collections::HashMap;
@@ -152,12 +152,12 @@ fn parse_card_lines(contents: &str) -> (Option<String>, Option<String>, Option<S
         join_nonempty(cloze_lines),
     )
 }
-pub fn content_to_card(
+pub fn content_to_cards(
     card_path: &Path,
     contents: &str,
     file_start_idx: usize,
     file_end_idx: usize,
-) -> Result<Card> {
+) -> Result<Vec<Card>> {
     fn card_location(path: &Path, start_idx: usize, end_idx: usize) -> String {
         format!(
             "{} (lines {}-{})",
@@ -184,32 +184,59 @@ pub fn content_to_card(
     let location = card_location(card_path, file_start_idx, file_end_idx);
     let (question, answer, cloze) = parse_card_lines(contents);
 
-    let card_hash = get_hash(contents).ok_or_else(|| {
-        anyhow!(
-            "Unable to hash card from {}.\nContent:\n{}",
-            location,
-            card_content_preview(contents)
-        )
-    })?;
+    let card_hash = || {
+        get_hash(contents).ok_or_else(|| {
+            anyhow!(
+                "Unable to hash card from {}.\nContent:\n{}",
+                location,
+                card_content_preview(contents)
+            )
+        })
+    };
+    let cloze_hash = |blank_index| {
+        get_cloze_hash(contents, blank_index).ok_or_else(|| {
+            anyhow!(
+                "Unable to hash card from {}.\nContent:\n{}",
+                location,
+                card_content_preview(contents)
+            )
+        })
+    };
     if let (Some(q), Some(a)) = (question, answer) {
         let content = CardContent::Basic {
             question: q,
             answer: a,
         };
 
-        Ok(Card::new(
+        Ok(vec![Card::new(
             card_path.to_path_buf(),
             (file_start_idx, file_end_idx),
             content,
-            card_hash,
-        ))
+            card_hash()?,
+        )])
     } else if let Some(c) = cloze {
         let cloze_idxs = find_cloze_ranges(&c);
-        let cloze_range: Option<ClozeRange> = cloze_idxs
-            .first()
-            .map(|(start, end)| ClozeRange::new(*start, *end))
-            .transpose()
-            .with_context(|| {
+
+        if cloze_idxs.is_empty() {
+            let content = CardContent::Cloze {
+                text: c,
+                cloze_range: None,
+            };
+            return Ok(vec![Card::new(
+                card_path.to_path_buf(),
+                (file_start_idx, file_end_idx),
+                content,
+                cloze_hash(0)?,
+            )]);
+        }
+
+        let mut cards = Vec::new();
+        for (blank_index, (start, end)) in cloze_idxs
+            .into_iter()
+            .filter(|(start, end)| end - start > 2)
+            .enumerate()
+        {
+            let cloze_range = ClozeRange::new(start, end).with_context(|| {
                 format!(
                     "Invalid cloze range in card from {}.\nContent:\n{}",
                     location,
@@ -217,16 +244,19 @@ pub fn content_to_card(
                 )
             })?;
 
-        let content = CardContent::Cloze {
-            text: c,
-            cloze_range,
-        };
-        Ok(Card::new(
-            card_path.to_path_buf(),
-            (file_start_idx, file_end_idx),
-            content,
-            card_hash,
-        ))
+            let content = CardContent::Cloze {
+                text: c.clone(),
+                cloze_range: Some(cloze_range),
+            };
+            cards.push(Card::new(
+                card_path.to_path_buf(),
+                (file_start_idx, file_end_idx),
+                content,
+                cloze_hash(blank_index)?,
+            ));
+        }
+
+        Ok(cards)
     } else {
         bail!(
             "Unable to parse card from {}.\nContent:\n{}",
@@ -249,20 +279,20 @@ pub fn cards_from_text(path: &Path, text: &str) -> Result<Vec<Card>> {
         if line.starts_with("Q:") || line.starts_with("C:") {
             track_buffer = true;
             if trim_line(&buffer).is_some() {
-                cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
+                cards.extend(content_to_cards(path, &buffer, start_idx, line_idx)?);
                 buffer.clear();
             }
             start_idx = line_idx;
         }
         if !track_buffer && line.contains("::") {
             if trim_line(&buffer).is_some() {
-                cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
+                cards.extend(content_to_cards(path, &buffer, start_idx, line_idx)?);
                 buffer.clear();
             }
-            cards.push(content_to_card(path, &line, line_idx, line_idx)?);
+            cards.extend(content_to_cards(path, &line, line_idx, line_idx)?);
         }
         if line.starts_with("---") && trim_line(&buffer).is_some() {
-            cards.push(content_to_card(path, &buffer, start_idx, line_idx)?);
+            cards.extend(content_to_cards(path, &buffer, start_idx, line_idx)?);
             buffer.clear();
             track_buffer = false;
         }
@@ -272,7 +302,7 @@ pub fn cards_from_text(path: &Path, text: &str) -> Result<Vec<Card>> {
         last_idx = line_idx;
     }
     if !buffer.is_empty() {
-        cards.push(content_to_card(path, &buffer, start_idx, last_idx + 1)?);
+        cards.extend(content_to_cards(path, &buffer, start_idx, last_idx + 1)?);
     }
 
     Ok(cards)
@@ -391,10 +421,17 @@ pub async fn register_all_cards(
 
 #[cfg(test)]
 mod tests {
-    use super::{cards_from_md, content_to_card, parse_card_lines, register_all_cards};
-    use crate::card::CardContent;
+    use super::{cards_from_md, content_to_cards, parse_card_lines, register_all_cards};
+    use crate::card::{Card, CardContent};
     use crate::crud::DB;
-    use std::path::PathBuf;
+    use crate::parser::get_hash;
+    use std::path::{Path, PathBuf};
+
+    fn single_card(card_path: &Path, content: &str, start_idx: usize, end_idx: usize) -> Card {
+        let cards = content_to_cards(card_path, content, start_idx, end_idx).unwrap();
+        assert_eq!(cards.len(), 1);
+        cards.into_iter().next().unwrap()
+    }
 
     #[test]
     fn test_card_parsing() {
@@ -408,14 +445,14 @@ mod tests {
     fn basic_qa() {
         let card_path = PathBuf::from("test.md");
 
-        let card = content_to_card(&card_path, "", 1, 1);
+        let card = content_to_cards(&card_path, "", 1, 1);
         assert!(card.is_err());
 
-        let card = content_to_card(&card_path, "what am i doing here", 1, 1);
+        let card = content_to_cards(&card_path, "what am i doing here", 1, 1);
         assert!(card.is_err());
 
         let content = "Q: what?\nA: yes\n\n";
-        let card = content_to_card(&card_path, content, 1, 1).unwrap();
+        let card = single_card(&card_path, content, 1, 1);
         if let CardContent::Basic { question, answer } = &card.content {
             assert_eq!(question, "what?");
             assert_eq!(answer, "yes");
@@ -424,7 +461,7 @@ mod tests {
         }
 
         let content = "Q: what?\nA: \n\n";
-        let card = content_to_card(&card_path, content, 1, 1);
+        let card = content_to_cards(&card_path, content, 1, 1);
         assert!(card.is_err());
     }
 
@@ -433,8 +470,8 @@ mod tests {
         let card_path = PathBuf::from("test.md");
 
         let content = "C: ping? [pong]";
-        let card = content_to_card(&card_path, content, 1, 1);
-        if let CardContent::Cloze { text, cloze_range } = &card.expect("should be basic").content {
+        let card = single_card(&card_path, content, 1, 1);
+        if let CardContent::Cloze { text, cloze_range } = &card.content {
             assert_eq!(text, "ping? [pong]");
             let range = cloze_range.as_ref().expect("range to exist");
             assert_eq!(range.start, 6_usize);
@@ -442,6 +479,91 @@ mod tests {
         } else {
             panic!("Expected CardContent::Cloze");
         }
+    }
+
+    #[test]
+    fn multi_blank_cloze_line_emits_card_per_blank() {
+        let card_path = PathBuf::from("test.md");
+        let content = "C: The [order] of a group is [the cardinality of its underlying set].";
+        let text = "The [order] of a group is [the cardinality of its underlying set].";
+        let cards = content_to_cards(&card_path, content, 4, 4).unwrap();
+
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0].card_hash, get_hash(content).unwrap());
+        assert_ne!(cards[0].card_hash, cards[1].card_hash);
+
+        let mut ranges = Vec::new();
+        for card in &cards {
+            assert_eq!(&card.file_path, &card_path);
+            assert_eq!(card.file_card_range, (4, 4));
+            if let CardContent::Cloze {
+                text: body,
+                cloze_range,
+            } = &card.content
+            {
+                assert_eq!(body, text);
+                let range = cloze_range.as_ref().expect("range to exist");
+                ranges.push((range.start, range.end));
+            } else {
+                panic!("Expected CardContent::Cloze");
+            }
+        }
+
+        let first_start = text.find("[order]").unwrap();
+        let second_start = text.find("[the cardinality").unwrap();
+        assert_eq!(ranges[0], (first_start, first_start + "[order]".len()));
+        assert_eq!(
+            ranges[1],
+            (
+                second_start,
+                second_start + "[the cardinality of its underlying set]".len()
+            )
+        );
+    }
+
+    #[test]
+    fn cloze_with_empty_and_real_blank_emits_real_blank_only() {
+        let card_path = PathBuf::from("test.md");
+        let content = "C: [] then [real]";
+        let text = "[] then [real]";
+        let cards = content_to_cards(&card_path, content, 0, 0).unwrap();
+
+        assert_eq!(cards.len(), 1);
+        assert_eq!(cards[0].card_hash, get_hash(content).unwrap());
+        if let CardContent::Cloze {
+            text: body,
+            cloze_range,
+        } = &cards[0].content
+        {
+            assert_eq!(body, text);
+            let range = cloze_range.as_ref().expect("range to exist");
+            let real_start = text.find("[real]").unwrap();
+            assert_eq!(range.start, real_start);
+            assert_eq!(range.end, real_start + "[real]".len());
+        } else {
+            panic!("Expected CardContent::Cloze");
+        }
+    }
+
+    #[test]
+    fn identical_answer_cloze_blanks_have_distinct_hashes() {
+        let card_path = PathBuf::from("test.md");
+        let content = "C: [foo] equals [foo]";
+        let cards = content_to_cards(&card_path, content, 0, 0).unwrap();
+
+        assert_eq!(cards.len(), 2);
+        assert_ne!(cards[0].card_hash, cards[1].card_hash);
+
+        let mut ranges = Vec::new();
+        for card in &cards {
+            if let CardContent::Cloze { cloze_range, .. } = &card.content {
+                let range = cloze_range.as_ref().expect("range to exist");
+                ranges.push((range.start, range.end));
+            } else {
+                panic!("Expected CardContent::Cloze");
+            }
+        }
+        assert_ne!(ranges[0], ranges[1]);
     }
 
     #[test]
@@ -483,13 +605,12 @@ mod tests {
     }
 
     #[test]
-    fn content_to_card_allows_invalid_cloze() {
+    fn content_to_cards_allows_cloze_without_brackets() {
         let card_path = PathBuf::from("test.md");
 
         // Cloze without brackets still produces a card, but lacks a range
         let content = "C: this has no cloze markers";
-        let card = content_to_card(&card_path, content, 0, 1)
-            .expect("invalid cloze text should still be accepted");
+        let card = single_card(&card_path, content, 0, 1);
         if let CardContent::Cloze { text, cloze_range } = card.content {
             assert_eq!(text, "this has no cloze markers");
             assert!(cloze_range.is_none());
@@ -497,20 +618,19 @@ mod tests {
             panic!("Expected CardContent::Cloze");
         }
 
-        // Cloze with empty brackets should error out
+        // Empty brackets are ignored instead of producing an invalid cloze range.
         let content = "C: this has empty []";
-        let temp = content_to_card(&card_path, content, 0, 1);
-        dbg!(&temp);
-        assert!(content_to_card(&card_path, content, 0, 1).is_err());
+        let cards = content_to_cards(&card_path, content, 0, 1).unwrap();
+        assert!(cards.is_empty());
     }
 
     #[test]
-    fn content_to_card_returns_error_for_incomplete_basic_card() {
+    fn content_to_cards_returns_error_for_incomplete_basic_card() {
         let card_path = PathBuf::from("test.md");
 
         // Question without answer
         let content = "Q: What is this?\n";
-        let result = content_to_card(&card_path, content, 0, 1);
+        let result = content_to_cards(&card_path, content, 0, 1);
         assert!(result.is_err());
         assert!(
             result
@@ -521,22 +641,22 @@ mod tests {
 
         // Answer without question
         let content = "A: This is an answer\n";
-        let result = content_to_card(&card_path, content, 0, 1);
+        let result = content_to_cards(&card_path, content, 0, 1);
         assert!(result.is_err());
     }
 
     #[test]
-    fn content_to_card_returns_error_for_empty_content() {
+    fn content_to_cards_returns_error_for_empty_content() {
         let card_path = PathBuf::from("test.md");
-        let result = content_to_card(&card_path, "", 0, 1);
+        let result = content_to_cards(&card_path, "", 0, 1);
         assert!(result.is_err());
     }
 
     #[test]
-    fn content_to_card_returns_error_for_whitespace_only() {
+    fn content_to_cards_returns_error_for_whitespace_only() {
         let card_path = PathBuf::from("test.md");
         let content = "   \n  \n  ";
-        let result = content_to_card(&card_path, content, 0, 1);
+        let result = content_to_cards(&card_path, content, 0, 1);
         assert!(result.is_err());
     }
 
@@ -575,7 +695,7 @@ mod tests {
     #[test]
     fn test_single_line_remnote() {
         let card_path = PathBuf::from("test.md");
-        let card = content_to_card(&card_path, "what is this::remnote  \n", 0, 1).unwrap();
+        let card = single_card(&card_path, "what is this::remnote  \n", 0, 1);
         if let CardContent::Basic { question, answer } = &card.content {
             assert_eq!(question, "what is this");
             assert_eq!(answer, "remnote");
@@ -583,7 +703,7 @@ mod tests {
             panic!("Expected CardContent::Basic");
         }
 
-        let card = content_to_card(&card_path, "what is this::\n", 0, 1);
+        let card = content_to_cards(&card_path, "what is this::\n", 0, 1);
         assert!(card.is_err());
     }
 

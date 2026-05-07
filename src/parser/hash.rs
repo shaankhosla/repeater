@@ -14,7 +14,7 @@ use blake3::Hasher;
 // Symbols
 // Anything semantic
 
-pub fn get_hash(s: &str) -> Option<String> {
+fn normalized_hash_input(s: &str) -> Option<String> {
     let lower = s.to_lowercase();
 
     let mut collapsed = String::with_capacity(lower.len());
@@ -38,15 +38,36 @@ pub fn get_hash(s: &str) -> Option<String> {
         return None;
     }
 
-    let mut hasher = Hasher::new();
-    hasher.update(trimmed.as_bytes());
+    Some(trimmed.to_string())
+}
 
-    Some(hasher.finalize().to_string())
+fn hash_normalized(s: &str) -> String {
+    let mut hasher = Hasher::new();
+    hasher.update(s.as_bytes());
+    hasher.finalize().to_string()
+}
+
+pub fn get_hash(s: &str) -> Option<String> {
+    normalized_hash_input(s).map(|normalized| hash_normalized(&normalized))
+}
+
+pub fn get_cloze_hash(text: &str, blank_index: usize) -> Option<String> {
+    if blank_index == 0 {
+        return get_hash(text);
+    }
+
+    let normalized = normalized_hash_input(text)?;
+    let mut hash_input = String::with_capacity(normalized.len() + "\0cloze".len() + 20);
+    hash_input.push_str(&normalized);
+    hash_input.push_str("\0cloze");
+    hash_input.push_str(&blank_index.to_string());
+
+    Some(hash_normalized(&hash_input))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::get_hash;
+    use crate::parser::{get_cloze_hash, get_hash};
     use proptest::prelude::*;
     proptest! {
         #[test]
@@ -137,5 +158,23 @@ mod tests {
         let a = "a an science";
         let ha = get_hash(a);
         assert!(ha.is_some());
+    }
+
+    #[test]
+    fn first_cloze_hash_matches_bare_hash() {
+        let text = "C: The [order] of a group";
+
+        assert_eq!(get_cloze_hash(text, 0), get_hash(text));
+    }
+
+    #[test]
+    fn later_cloze_hashes_are_distinct() {
+        let text = "C: The [order] of a group is [the cardinality].";
+        let first = get_cloze_hash(text, 0);
+        let second = get_cloze_hash(text, 1);
+        let third = get_cloze_hash(text, 2);
+
+        assert_ne!(second, first);
+        assert_ne!(second, third);
     }
 }
