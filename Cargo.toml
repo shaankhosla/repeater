@@ -33,7 +33,7 @@ open = "5"
 dialoguer = {version="0.12.0", features=["password", "fuzzy-select"]}
 fsrs = "5.2.0"
 rand = "0.10"
-prost = "0.13"
+prost = "0.14"
 flate2 = "1"
 
 [dev-dependencies]
