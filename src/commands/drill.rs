@@ -74,7 +74,14 @@ pub async fn run(db: &DB, opts: DrillOptions) -> Result<()> {
     let drill_preprocessor =
         DrillPreprocessor::new(&cards_due_today, opts.rephrase_questions).await?;
     drill_preprocessor.initialize_card_status(&mut cards_due_today);
-    start_drill_session(db, cards_due_today, drill_preprocessor, opts.retention).await?;
+    start_drill_session(
+        db,
+        cards_due_today,
+        drill_preprocessor,
+        opts.retention,
+        opts.shuffle,
+    )
+    .await?;
 
     Ok(())
 }
@@ -97,6 +104,7 @@ struct DrillState<'a> {
     last_action: Option<LastAction>,
     current_medias: Vec<Media>,
     retention: f32,
+    shuffle: bool,
 }
 struct LastAction {
     action: ReviewStatus,
@@ -122,7 +130,7 @@ impl LastAction {
 }
 
 impl<'a> DrillState<'a> {
-    fn new(db: &'a DB, cards: Vec<Card>, retention: f32) -> Self {
+    fn new(db: &'a DB, cards: Vec<Card>, retention: f32, shuffle: bool) -> Self {
         Self {
             db,
             cards,
@@ -132,6 +140,7 @@ impl<'a> DrillState<'a> {
             last_action: None,
             current_medias: Vec::new(),
             retention,
+            shuffle,
         }
     }
 
@@ -139,6 +148,10 @@ impl<'a> DrillState<'a> {
         if self.current_idx >= self.cards.len() {
             if self.redo_cards.is_empty() {
                 return None;
+            }
+            if self.shuffle {
+                use rand::seq::SliceRandom;
+                self.redo_cards.shuffle(&mut rand::rng());
             }
             self.cards = std::mem::take(&mut self.redo_cards);
             self.current_idx = 0;
@@ -209,6 +222,7 @@ async fn start_drill_session(
     cards: Vec<Card>,
     drill_preprocessor: DrillPreprocessor,
     retention: f32,
+    shuffle: bool,
 ) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
@@ -235,7 +249,7 @@ async fn start_drill_session(
         None
     };
 
-    let mut state = DrillState::new(db, cards, retention);
+    let mut state = DrillState::new(db, cards, retention, shuffle);
 
     let loop_result: Result<()> = async {
         loop {
@@ -489,11 +503,15 @@ mod tests {
     use std::time::Instant;
 
     fn basic_card(question: &str, answer: &str) -> Card {
+        basic_card_with_hash(question, answer, "hash")
+    }
+
+    fn basic_card_with_hash(question: &str, answer: &str, hash: &str) -> Card {
         let content = CardContent::Basic {
             question: question.into(),
             answer: answer.into(),
         };
-        Card::new(PathBuf::from("test.md"), (0, 1), content, "hash".into())
+        Card::new(PathBuf::from("test.md"), (0, 1), content, hash.into())
     }
 
     fn cloze_card(text: &str, blank_index: usize) -> Card {
@@ -590,7 +608,7 @@ mod tests {
     #[test]
     fn instructions_show_answer_branch_includes_pass_and_fail() {
         let db = in_memory_db();
-        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9);
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9, false);
         state.show_answer = true;
 
         let lines = instructions_text(&state);
@@ -603,7 +621,7 @@ mod tests {
     #[test]
     fn recent_last_action_is_displayed_in_instructions() {
         let db = in_memory_db();
-        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9);
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9, false);
         state.show_answer = true;
         state.last_action = Some(LastAction {
             action: ReviewStatus::Fail,
@@ -617,6 +635,33 @@ mod tests {
         let last_line = flatten_line(lines.last().unwrap());
         assert!(last_line.contains("Last:"));
         assert!(last_line.contains("Fail"));
+    }
+
+    #[tokio::test]
+    async fn redo_queue_keeps_insertion_order_when_shuffle_disabled() {
+        let db = DB::new_in_memory().await.unwrap();
+        let cards = vec![
+            basic_card_with_hash("A?", "A", "hash-a"),
+            basic_card_with_hash("B?", "B", "hash-b"),
+            basic_card_with_hash("C?", "C", "hash-c"),
+        ];
+        db.add_cards_batch(&cards).await.unwrap();
+
+        let mut state = DrillState::new(&db, cards.clone(), 0.9, false);
+        for _ in 0..cards.len() {
+            state.handle_review(ReviewStatus::Fail).await.unwrap();
+        }
+
+        let current = state.current_card().unwrap();
+        assert_eq!(current.card_hash, "hash-a");
+
+        let order = state
+            .cards
+            .iter()
+            .map(|card| card.card_hash.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(order, vec!["hash-a", "hash-b", "hash-c"]);
+        assert!(state.redo_cards.is_empty());
     }
 
     fn extract_placeholder(text: &str) -> String {
