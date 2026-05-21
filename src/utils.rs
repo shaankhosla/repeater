@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use anyhow::Context;
 use anyhow::Result;
 
 use anyhow::anyhow;
@@ -80,11 +81,15 @@ pub fn ask_yn(prompt: String) -> bool {
 pub const DATA_DIR_ENV: &str = "REPEATER_DATA_DIR";
 
 pub fn get_data_dir() -> Result<std::path::PathBuf> {
-    if let Ok(override_path) = std::env::var(DATA_DIR_ENV)
-        && !override_path.is_empty()
-    {
+    if let Ok(override_path) = std::env::var(DATA_DIR_ENV) {
+        if override_path.is_empty() {
+            return Err(anyhow!(
+                "{DATA_DIR_ENV} is set but empty; unset it or point it at a writable directory"
+            ));
+        }
         let path = std::path::PathBuf::from(override_path);
-        std::fs::create_dir_all(&path)?;
+        std::fs::create_dir_all(&path)
+            .with_context(|| format!("failed to create {DATA_DIR_ENV} path {}", path.display()))?;
         return Ok(path);
     }
 
@@ -155,13 +160,13 @@ mod tests {
     }
 
     #[test]
-    fn test_get_data_dir_ignores_empty_env_override() {
+    fn test_get_data_dir_errors_on_empty_env_override() {
         let previous = std::env::var(DATA_DIR_ENV).ok();
         unsafe {
             std::env::set_var(DATA_DIR_ENV, "");
         }
 
-        let resolved = get_data_dir().unwrap();
+        let resolved = get_data_dir();
 
         unsafe {
             match previous {
@@ -170,6 +175,7 @@ mod tests {
             }
         }
 
-        assert!(resolved.to_string_lossy().contains("repeater"));
+        let err = resolved.expect_err("empty REPEATER_DATA_DIR must error, not fall back");
+        assert!(err.to_string().contains(DATA_DIR_ENV));
     }
 }
