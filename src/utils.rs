@@ -77,7 +77,17 @@ pub fn ask_yn(prompt: String) -> bool {
         .unwrap()
 }
 
+pub const DATA_DIR_ENV: &str = "REPEATER_DATA_DIR";
+
 pub fn get_data_dir() -> Result<std::path::PathBuf> {
+    if let Ok(override_path) = std::env::var(DATA_DIR_ENV)
+        && !override_path.is_empty()
+    {
+        let path = std::path::PathBuf::from(override_path);
+        std::fs::create_dir_all(&path)?;
+        return Ok(path);
+    }
+
     let proj_dirs = ProjectDirs::from("", "", "repeater")
         .ok_or_else(|| anyhow!("Could not determine project directory"))?;
 
@@ -119,5 +129,47 @@ mod tests {
     #[test]
     fn test_pluralize_zero() {
         assert_eq!(pluralize("card", 0), "0 cards");
+    }
+
+    #[test]
+    fn test_get_data_dir_honors_env_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("custom-repeater-data");
+
+        let previous = std::env::var(DATA_DIR_ENV).ok();
+        unsafe {
+            std::env::set_var(DATA_DIR_ENV, &target);
+        }
+
+        let resolved = get_data_dir().unwrap();
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var(DATA_DIR_ENV, value),
+                None => std::env::remove_var(DATA_DIR_ENV),
+            }
+        }
+
+        assert_eq!(resolved, target);
+        assert!(target.is_dir(), "override path should be created");
+    }
+
+    #[test]
+    fn test_get_data_dir_ignores_empty_env_override() {
+        let previous = std::env::var(DATA_DIR_ENV).ok();
+        unsafe {
+            std::env::set_var(DATA_DIR_ENV, "");
+        }
+
+        let resolved = get_data_dir().unwrap();
+
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var(DATA_DIR_ENV, value),
+                None => std::env::remove_var(DATA_DIR_ENV),
+            }
+        }
+
+        assert!(resolved.to_string_lossy().contains("repeater"));
     }
 }
