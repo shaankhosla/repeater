@@ -8,6 +8,8 @@
 
 Your decks stay in plain Markdown wherever you save them, but progress metadata (stability, difficulty, due dates, etc.) is tracked in `cards.db` under the platform’s application data directory (for example `~/Library/Application Support/repeater/cards.db` on macOS). Back up or sync that file if you want to keep review history when moving machines; deleting it resets scheduling without touching the Markdown decks.
 
+You can point `repeater` at a different location by setting the `REPEATER_DATA_DIR` environment variable. The directory is created automatically if it doesn’t exist, which lets you keep an isolated database per source or run `repeater` from CI without writing to the user-wide application data directory.
+
 ## What happens if I edit or move a card?
 
 Each card gets a hash that only looks at the actual letters, numbers, and any `+`/`-` signs. We ignore punctuation, spacing, and capitalization, so cleaning up commas or case won’t touch your streak. Rewrite the wording itself and you’ll start fresh. Moving blocks between files is safe because the text stays the same.
