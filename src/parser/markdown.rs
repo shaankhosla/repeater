@@ -13,9 +13,6 @@ pub fn render_markdown(md: &str) -> Text<'static> {
     let mut in_image = false;
 
     for event in parser {
-        // Swallow everything inside an image, including its alt text. On a card whose
-        // picture *is* the question ("which department is this?"), rendering the alt text
-        // would hand over the answer.
         if in_image {
             if matches!(event, Event::End(TagEnd::Image)) {
                 in_image = false;
@@ -40,10 +37,6 @@ pub fn render_markdown(md: &str) -> Text<'static> {
                 Tag::Link { .. } => push_style(&mut styles, |style| {
                     style.add_modifier(Modifier::UNDERLINED)
                 }),
-                // A content-free marker: it says "there is a picture here" without
-                // revealing anything about it. Terminals that can draw the picture render
-                // it separately; elsewhere this is the cue to press `O`. To caption an
-                // image, write the caption as ordinary text next to it.
                 Tag::Image { .. } => {
                     in_image = true;
                     push_style(&mut styles, |style| style.add_modifier(Modifier::DIM));

@@ -78,4 +78,4 @@ While drilling:
 
 If a file cannot be found you’ll see `File does not exist: …` in the terminal. Double-check the relative path from the deck file and ensure the media is synced locally.
 
-Multiple attachments can be detected; broader selection support is on the roadmap.
+Multiple attachments can be detected;

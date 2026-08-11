@@ -105,9 +105,6 @@ struct DrillState<'a> {
     show_answer: bool,
     last_action: Option<LastAction>,
     current_medias: Vec<Media>,
-    /// The rendered text and deck directory the current `current_medias` / `card_image`
-    /// were derived from. Used to re-resolve media only when what's on screen actually
-    /// changes, rather than on every frame.
     visible_key: Option<(String, Option<PathBuf>)>,
     card_image: CardImage,
     zoom_image: bool,
@@ -155,12 +152,6 @@ impl<'a> DrillState<'a> {
         }
     }
 
-    /// Resolve everything that depends on what's currently on screen, and return the card
-    /// plus its rendered text.
-    ///
-    /// Called once per loop iteration *before* drawing. Media extraction and image
-    /// decoding only happen when the visible text or deck directory changes, so the
-    /// expensive work runs once per card side rather than on every frame.
     fn sync_visible(&mut self, renderer: Option<&ImageRenderer>) -> (Card, String) {
         let card = self
             .current_card()
@@ -173,10 +164,6 @@ impl<'a> DrillState<'a> {
         };
         let base_dir = card.file_path.parent().map(|dir| dir.to_path_buf());
 
-        // Key on the rendered text itself rather than on the card hash: the hash is
-        // content-derived (so duplicate cards in different files collide) and the redo
-        // queue can rotate a different card into the same slot. The text plus the deck
-        // directory is exactly what media resolution depends on.
         let key = (content.clone(), base_dir.clone());
         if self.visible_key.as_ref() == Some(&key) {
             return (card, content);
@@ -196,8 +183,6 @@ impl<'a> DrillState<'a> {
         (card, content)
     }
 
-    /// The media `O` should open: the image being displayed when there is one, so the key
-    /// and the picture never disagree, otherwise the first attachment of any kind.
     fn media_to_open(&self) -> Option<&Media> {
         if self.card_image.is_ready() {
             self.current_medias.iter().find(|media| media.is_image())
@@ -291,10 +276,6 @@ async fn start_drill_session(
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen).context("failed to configure terminal")?;
 
-    // Probe for graphics support here, in the gap between entering the alternate screen and
-    // pushing the keyboard enhancement flags: the probe reads its reply from stdin, so it
-    // must run before anything else consumes input and before the kitty keyboard protocol
-    // changes how that reply arrives.
     let image_renderer = ImageRenderer::detect(inline_images);
 
     execute!(
@@ -343,9 +324,6 @@ async fn start_drill_session(
                 ai_preprocess_handle = None;
             }
 
-            // Everything that touches state happens before the draw closure, so drawing is
-            // pure rendering. Media extraction used to run inside the closure, re-parsing
-            // the card on every frame.
             let (card, content) = state.sync_visible(image_renderer.as_ref());
             let header_line = header_line(&state, &card);
             let body = render_markdown(&content);
@@ -381,9 +359,6 @@ async fn start_drill_session(
                 })
                 .context("failed to render frame")?;
 
-            // Encoding happens during rendering, so a protocol-level failure (a sixel
-            // encoder error, say) only becomes visible afterwards. Surface it in the footer
-            // instead of leaving an empty box.
             if let Some(protocol) = state.card_image.protocol_mut()
                 && let Some(Err(err)) = protocol.last_encoding_result()
             {
@@ -423,9 +398,6 @@ async fn start_drill_session(
                     KeyCode::Char('I') | KeyCode::Char('i')
                         if !ai_pending && state.card_image.is_ready() =>
                     {
-                        // No explicit repaint needed: every protocol anchors the picture to
-                        // buffer cells, so shrinking the image area lets ratatui's normal
-                        // diff overwrite the cells it used to occupy.
                         state.zoom_image = !state.zoom_image;
                     }
 
@@ -472,10 +444,6 @@ fn header_line(state: &DrillState<'_>, card: &Card) -> Line<'static> {
     Line::from(spans)
 }
 
-/// Footer chips for whatever media the current card side has.
-///
-/// Kept separate from the review keys because media is present in both the question and the
-/// answer state — an image on the back of a card is as worth opening as one on the front.
 fn media_hint(state: &DrillState<'_>, renderer: Option<&ImageRenderer>) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     if state.current_medias.is_empty() {
@@ -550,8 +518,6 @@ fn instructions_text(
         ]));
     }
 
-    // On its own line: appended to the review keys it ran past the panel edge and the
-    // chips were silently truncated.
     if !state.current_medias.is_empty() {
         lines.push(Line::from(media_hint(state, renderer)));
     }
