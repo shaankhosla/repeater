@@ -19,6 +19,15 @@ pub struct Media {
 }
 
 impl Media {
+    /// Path to the file, already resolved against the deck's directory.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn is_image(&self) -> bool {
+        self.kind == MediaKind::Image
+    }
+
     pub fn play(&self) -> Result<()> {
         if !self.path.is_file() || !self.path.exists() {
             bail!("File does not exist: {}", self.path.display());
@@ -163,6 +172,20 @@ This is a normal link and should be ignored:
         ];
 
         assert_eq!(medias, expected);
+    }
+
+    #[test]
+    fn is_image_discriminates_by_kind() {
+        let contents = "![dog](media/dog.jpg)\n[audio](media/dog.mp3)\n[video](media/dog.mp4)";
+        let medias = extract_media(contents, None);
+
+        let images: Vec<&Path> = medias
+            .iter()
+            .filter(|media| media.is_image())
+            .map(|media| media.path())
+            .collect();
+
+        assert_eq!(images, vec![Path::new("media/dog.jpg")]);
     }
 
     #[test]

@@ -10,7 +10,14 @@ authors = ["Shaan Khosla <shaan.khosla@proton.me>"]
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
-ratatui = "0.30.0"
+ratatui = "0.30.1"
+# `default-features = false` is deliberate: ratatui-image's default `chafa-dyn` feature links
+# system libchafa via pkg-config, which would break the cargo-dist release binaries. Never
+# enable `chafa-dyn`/`chafa-static`.
+ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
+# ratatui-image only asks `image` for the `png` codec; this list is what makes the other
+# formats in `media_kind_from_path` decodable, via cargo feature unification.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 crossterm = "0.29"
 anyhow = "1.0.102"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }

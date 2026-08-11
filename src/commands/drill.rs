@@ -12,7 +12,7 @@ use crate::palette::Palette;
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
 use crate::parser::{Media, extract_media};
-use crate::tui::Theme;
+use crate::tui::{CardImage, ImageRenderer, InlineImages, Theme, image_widget, split_card_area};
 use crate::utils::pluralize;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -45,6 +45,7 @@ pub struct DrillOptions {
     pub shuffle: bool,
     pub retention: f32,
     pub apple_notes: bool,
+    pub inline_images: InlineImages,
 }
 
 pub async fn run(db: &DB, opts: DrillOptions) -> Result<()> {
@@ -80,6 +81,7 @@ pub async fn run(db: &DB, opts: DrillOptions) -> Result<()> {
         drill_preprocessor,
         opts.retention,
         opts.shuffle,
+        opts.inline_images,
     )
     .await?;
 
@@ -103,6 +105,12 @@ struct DrillState<'a> {
     show_answer: bool,
     last_action: Option<LastAction>,
     current_medias: Vec<Media>,
+    /// The rendered text and deck directory the current `current_medias` / `card_image`
+    /// were derived from. Used to re-resolve media only when what's on screen actually
+    /// changes, rather than on every frame.
+    visible_key: Option<(String, Option<PathBuf>)>,
+    card_image: CardImage,
+    zoom_image: bool,
     retention: f32,
     shuffle: bool,
 }
@@ -139,8 +147,62 @@ impl<'a> DrillState<'a> {
             show_answer: false,
             last_action: None,
             current_medias: Vec::new(),
+            visible_key: None,
+            card_image: CardImage::Absent,
+            zoom_image: false,
             retention,
             shuffle,
+        }
+    }
+
+    /// Resolve everything that depends on what's currently on screen, and return the card
+    /// plus its rendered text.
+    ///
+    /// Called once per loop iteration *before* drawing. Media extraction and image
+    /// decoding only happen when the visible text or deck directory changes, so the
+    /// expensive work runs once per card side rather than on every frame.
+    fn sync_visible(&mut self, renderer: Option<&ImageRenderer>) -> (Card, String) {
+        let card = self
+            .current_card()
+            .expect("card should exist while session is active");
+
+        let content = if self.current_ai_pending() {
+            "Enhancing this card with AI...\n\nPlease wait.".to_string()
+        } else {
+            format_card_text(&card, self.show_answer)
+        };
+        let base_dir = card.file_path.parent().map(|dir| dir.to_path_buf());
+
+        // Key on the rendered text itself rather than on the card hash: the hash is
+        // content-derived (so duplicate cards in different files collide) and the redo
+        // queue can rotate a different card into the same slot. The text plus the deck
+        // directory is exactly what media resolution depends on.
+        let key = (content.clone(), base_dir.clone());
+        if self.visible_key.as_ref() == Some(&key) {
+            return (card, content);
+        }
+
+        self.current_medias = extract_media(&content, base_dir.as_deref());
+        self.zoom_image = false;
+        self.card_image = match (renderer, self.current_medias.iter().find(|m| m.is_image())) {
+            (Some(renderer), Some(media)) => match renderer.load(media.path()) {
+                Ok(protocol) => CardImage::Ready(Box::new(protocol)),
+                Err(reason) => CardImage::Failed(reason),
+            },
+            _ => CardImage::Absent,
+        };
+        self.visible_key = Some(key);
+
+        (card, content)
+    }
+
+    /// The media `O` should open: the image being displayed when there is one, so the key
+    /// and the picture never disagree, otherwise the first attachment of any kind.
+    fn media_to_open(&self) -> Option<&Media> {
+        if self.card_image.is_ready() {
+            self.current_medias.iter().find(|media| media.is_image())
+        } else {
+            self.current_medias.first()
         }
     }
 
@@ -223,12 +285,20 @@ async fn start_drill_session(
     drill_preprocessor: DrillPreprocessor,
     retention: f32,
     shuffle: bool,
+    inline_images: InlineImages,
 ) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen).context("failed to configure terminal")?;
+
+    // Probe for graphics support here, in the gap between entering the alternate screen and
+    // pushing the keyboard enhancement flags: the probe reads its reply from stdin, so it
+    // must run before anything else consumes input and before the kitty keyboard protocol
+    // changes how that reply arrives.
+    let image_renderer = ImageRenderer::detect(inline_images);
+
     execute!(
         stdout,
-        EnterAlternateScreen,
         PushKeyboardEnhancementFlags(
             KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
                 | KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
@@ -273,11 +343,18 @@ async fn start_drill_session(
                 ai_preprocess_handle = None;
             }
 
+            // Everything that touches state happens before the draw closure, so drawing is
+            // pure rendering. Media extraction used to run inside the closure, re-parsing
+            // the card on every frame.
+            let (card, content) = state.sync_visible(image_renderer.as_ref());
+            let header_line = header_line(&state, &card);
+            let body = render_markdown(&content);
+            let instructions = instructions_text(&state, image_renderer.as_ref());
+            let zoom = state.zoom_image;
+
+            let card_image = &mut state.card_image;
             terminal
                 .draw(|frame| {
-                    let card = state
-                        .current_card()
-                        .expect("card should exist while session is active");
                     let area = frame.area();
                     frame.render_widget(Theme::backdrop(), area);
                     let chunks = Layout::default()
@@ -285,43 +362,33 @@ async fn start_drill_session(
                         .constraints([Constraint::Min(5), Constraint::Length(5)])
                         .split(area);
 
-                    let mut header_vec = vec![
-                        Theme::label_span(format!(
-                            "Card {}/{}",
-                            state.current_idx + 1,
-                            state.cards.len()
-                        )),
-                        Theme::bullet(),
-                        Theme::span(format!("{} coming again", state.redo_cards.len())),
-                        Theme::bullet(),
-                        Theme::span(card.file_path.display().to_string()),
-                    ];
-                    if card.ai_status == AIStatus::AiEnhanced {
-                        header_vec.push(Theme::bullet());
-                        header_vec.push(Theme::key_chip("AI enhanced"));
+                    let block = Theme::panel_with_line(header_line);
+                    let inner = block.inner(chunks[0]);
+                    frame.render_widget(block, chunks[0]);
+
+                    let (text_area, image_area) =
+                        split_card_area(inner, card_image.is_ready(), zoom);
+                    frame.render_widget(Paragraph::new(body).wrap(Wrap { trim: false }), text_area);
+                    if let (Some(image_area), Some(protocol)) =
+                        (image_area, card_image.protocol_mut())
+                    {
+                        frame.render_stateful_widget(image_widget(), image_area, protocol);
                     }
-                    let header_line = Line::from(header_vec);
 
-                    let ai_pending = state.current_ai_pending();
-                    let content = if ai_pending {
-                        "Enhancing this card with AI...\n\nPlease wait.".to_string()
-                    } else {
-                        format_card_text(&card, state.show_answer)
-                    };
-                    let markdown = render_markdown(&content);
-                    state.current_medias = extract_media(&content, card.file_path.parent());
-
-                    let card_widget = Paragraph::new(markdown)
-                        .block(Theme::panel_with_line(header_line))
-                        .wrap(Wrap { trim: false });
-                    frame.render_widget(card_widget, chunks[0]);
-
-                    let instructions = instructions_text(&state);
                     let footer = Paragraph::new(instructions)
                         .block(Theme::panel_with_line(Theme::section_header("Controls")));
                     frame.render_widget(footer, chunks[1]);
                 })
                 .context("failed to render frame")?;
+
+            // Encoding happens during rendering, so a protocol-level failure (a sixel
+            // encoder error, say) only becomes visible afterwards. Surface it in the footer
+            // instead of leaving an empty box.
+            if let Some(protocol) = state.card_image.protocol_mut()
+                && let Some(Err(err)) = protocol.last_encoding_result()
+            {
+                state.card_image = CardImage::Failed(format!("{err}"));
+            }
 
             if event::poll(Duration::from_millis(16))?
                 && let Event::Key(key) = event::read()?
@@ -348,12 +415,18 @@ async fn start_drill_session(
                     KeyCode::Char('F') | KeyCode::Char('f') if state.show_answer && !ai_pending => {
                         state.handle_review(ReviewStatus::Fail).await?;
                     }
-                    KeyCode::Char('O') | KeyCode::Char('o')
-                        if !ai_pending
-                            && !state.show_answer
-                            && !state.current_medias.is_empty() =>
+                    KeyCode::Char('O') | KeyCode::Char('o') if !ai_pending => {
+                        if let Some(media) = state.media_to_open() {
+                            media.play()?;
+                        }
+                    }
+                    KeyCode::Char('I') | KeyCode::Char('i')
+                        if !ai_pending && state.card_image.is_ready() =>
                     {
-                        state.current_medias[0].play()?;
+                        // No explicit repaint needed: every protocol anchors the picture to
+                        // buffer cells, so shrinking the image area lets ratatui's normal
+                        // diff overwrite the cells it used to occupy.
+                        state.zoom_image = !state.zoom_image;
                     }
 
                     _ => {}
@@ -380,7 +453,64 @@ fn teardown_terminal(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>)
     Ok(())
 }
 
-fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
+fn header_line(state: &DrillState<'_>, card: &Card) -> Line<'static> {
+    let mut spans = vec![
+        Theme::label_span(format!(
+            "Card {}/{}",
+            state.current_idx + 1,
+            state.cards.len()
+        )),
+        Theme::bullet(),
+        Theme::span(format!("{} coming again", state.redo_cards.len())),
+        Theme::bullet(),
+        Theme::span(card.file_path.display().to_string()),
+    ];
+    if card.ai_status == AIStatus::AiEnhanced {
+        spans.push(Theme::bullet());
+        spans.push(Theme::key_chip("AI enhanced"));
+    }
+    Line::from(spans)
+}
+
+/// Footer chips for whatever media the current card side has.
+///
+/// Kept separate from the review keys because media is present in both the question and the
+/// answer state — an image on the back of a card is as worth opening as one on the front.
+fn media_hint(state: &DrillState<'_>, renderer: Option<&ImageRenderer>) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    if state.current_medias.is_empty() {
+        return spans;
+    }
+
+    spans.push(Theme::span(format!(
+        "{} found in card ",
+        pluralize("media file", state.current_medias.len())
+    )));
+    spans.push(Theme::key_chip("O"));
+    spans.push(Theme::span(" open"));
+
+    if state.card_image.is_ready() {
+        spans.push(Theme::bullet());
+        spans.push(Theme::key_chip("i"));
+        spans.push(Theme::span(if state.zoom_image { " fit" } else { " zoom" }));
+        if let Some(renderer) = renderer {
+            spans.push(Theme::span(format!(" ({})", renderer.protocol_name())));
+        }
+    } else if let Some(reason) = state.card_image.failure() {
+        spans.push(Theme::bullet());
+        spans.push(Span::styled(
+            format!("image not shown: {reason}"),
+            Theme::danger(),
+        ));
+    }
+
+    spans
+}
+
+fn instructions_text(
+    state: &DrillState<'_>,
+    renderer: Option<&ImageRenderer>,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     if state.current_ai_pending() {
         lines.push(Line::from(vec![
@@ -407,7 +537,7 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Theme::span(" exit"),
         ]));
     } else {
-        let mut line = vec![
+        lines.push(Line::from(vec![
             Theme::key_chip("Space"),
             Theme::span(" or "),
             Theme::key_chip("Enter"),
@@ -417,18 +547,13 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
             Theme::span(" / "),
             Theme::key_chip("Ctrl+C"),
             Theme::span(" exit"),
-        ];
-        if !state.current_medias.is_empty() {
-            let num_media = state.current_medias.len();
-            line.push(Theme::bullet());
-            line.push(Theme::span(format!(
-                "{} found in card ",
-                pluralize("media file", num_media)
-            )));
-            line.push(Theme::key_chip("O"));
-            line.push(Theme::span(" open"));
-        }
-        lines.push(Line::from(line));
+        ]));
+    }
+
+    // On its own line: appended to the review keys it ran past the panel edge and the
+    // chips were silently truncated.
+    if !state.current_medias.is_empty() {
+        lines.push(Line::from(media_hint(state, renderer)));
     }
 
     if let Some(action) = &state.last_action
@@ -611,7 +736,7 @@ mod tests {
         let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9, false);
         state.show_answer = true;
 
-        let lines = instructions_text(&state);
+        let lines = instructions_text(&state, None);
         let commands = flatten_line(&lines[0]);
 
         assert!(commands.contains("Pass"));
@@ -629,12 +754,190 @@ mod tests {
             last_reviewed_at: Instant::now(),
         });
 
-        let lines = instructions_text(&state);
+        let lines = instructions_text(&state, None);
         assert!(lines.len() >= 2);
 
         let last_line = flatten_line(lines.last().unwrap());
         assert!(last_line.contains("Last:"));
         assert!(last_line.contains("Fail"));
+    }
+
+    #[test]
+    fn sync_visible_resolves_media_once_per_card_side() {
+        let db = in_memory_db();
+        let card = basic_card(
+            "What is this? ![diagram](wave.png)",
+            "A wave [sound](t.mp3)",
+        );
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+
+        let (_, question) = state.sync_visible(None);
+        assert!(question.contains("wave.png"));
+        assert_eq!(
+            state.current_medias.len(),
+            1,
+            "answer media not yet visible"
+        );
+
+        // Re-running on an unchanged card must be a no-op, not a re-parse: this is what
+        // keeps the work out of the ~60fps render path.
+        let key_before = state.visible_key.clone();
+        state.sync_visible(None);
+        assert_eq!(state.visible_key, key_before);
+
+        state.reveal_answer();
+        state.sync_visible(None);
+        assert_ne!(
+            state.visible_key, key_before,
+            "reveal must re-resolve media"
+        );
+        assert_eq!(
+            state.current_medias.len(),
+            2,
+            "answer-side media should now be found"
+        );
+    }
+
+    #[test]
+    fn media_hint_appears_in_both_question_and_answer_states() {
+        let db = in_memory_db();
+        let card = basic_card("Q ![diagram](wave.png)", "A");
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+
+        state.sync_visible(None);
+        let question_footer = flatten_footer(&state, None);
+        assert!(
+            question_footer.contains("media file found in card"),
+            "{question_footer}"
+        );
+
+        state.reveal_answer();
+        state.sync_visible(None);
+        let answer_footer = flatten_footer(&state, None);
+        assert!(
+            answer_footer.contains("media file found in card"),
+            "media must stay openable after the answer is revealed: {answer_footer}"
+        );
+    }
+
+    #[test]
+    fn footer_omits_the_media_line_when_a_card_has_no_attachments() {
+        let db = in_memory_db();
+        let mut state = DrillState::new(&db, vec![basic_card("Q", "A")], 0.9, false);
+        state.sync_visible(None);
+
+        assert_eq!(
+            instructions_text(&state, None).len(),
+            1,
+            "a plain card should not gain an empty media line"
+        );
+    }
+
+    /// The media chips were once appended to the review-keys line, which overran the panel
+    /// and silently truncated them. Render the real footer widget and read the buffer back,
+    /// so a regression shows up as missing text rather than as a passing span assertion.
+    #[test]
+    fn footer_chips_survive_rendering_at_a_normal_terminal_width() {
+        use ratatui::{Terminal, backend::TestBackend, layout::Rect, widgets::Paragraph};
+
+        let db = in_memory_db();
+        let card = basic_card("Q ![d](test_data/synaptic_vessel.jpg)", "A");
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+        let renderer = ImageRenderer::halfblocks();
+        state.sync_visible(Some(&renderer));
+        assert!(state.card_image.is_ready());
+
+        let instructions = instructions_text(&state, Some(&renderer));
+        let mut terminal = Terminal::new(TestBackend::new(100, 8)).unwrap();
+        terminal
+            .draw(|frame| {
+                // Exactly how the drill loop builds the footer — no wrapping, so an
+                // over-long line truncates at the panel edge instead of flowing.
+                let footer = Paragraph::new(instructions)
+                    .block(Theme::panel_with_line(Theme::section_header("Controls")));
+                frame.render_widget(footer, Rect::new(0, 0, 100, 5));
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..5)
+            .flat_map(|y| (0..100).map(move |x| (x, y)))
+            .map(|(x, y)| buffer[(x, y)].symbol().to_string())
+            .collect();
+
+        for needle in ["show answer", "media file found in card", "O", "i", "zoom"] {
+            assert!(
+                rendered.contains(needle),
+                "footer lost {needle:?} when rendered at 100 columns:\n{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn footer_reports_why_an_image_could_not_be_shown() {
+        let db = in_memory_db();
+        let card = basic_card("Q ![diagram](wave.png)", "A");
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+        state.sync_visible(None);
+        state.card_image = CardImage::Failed("unreadable".to_string());
+
+        let footer = flatten_footer(&state, None);
+        assert!(footer.contains("image not shown: unreadable"), "{footer}");
+    }
+
+    #[test]
+    fn open_target_prefers_the_displayed_image_over_a_leading_audio_file() {
+        let db = in_memory_db();
+        // Audio first, image second, so the first media and the first *image* differ.
+        let card = basic_card(
+            "Q [clip](a.mp3) ![diagram](test_data/synaptic_vessel.jpg)",
+            "A",
+        );
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+
+        state.sync_visible(None);
+        assert!(
+            state.media_to_open().unwrap().path().ends_with("a.mp3"),
+            "with no image displayed, O opens the first attachment"
+        );
+
+        // Now with a real decoded image on screen, `O` must open what is displayed.
+        let renderer = ImageRenderer::halfblocks();
+        state.visible_key = None;
+        state.sync_visible(Some(&renderer));
+        assert!(
+            state.card_image.is_ready(),
+            "fixture should decode via halfblocks"
+        );
+        assert!(
+            state
+                .media_to_open()
+                .unwrap()
+                .path()
+                .ends_with("synaptic_vessel.jpg"),
+            "O must open the picture the user can see"
+        );
+    }
+
+    #[test]
+    fn footer_offers_the_zoom_key_only_when_an_image_is_displayed() {
+        let db = in_memory_db();
+        let card = basic_card("Q ![d](test_data/synaptic_vessel.jpg)", "A");
+        let mut state = DrillState::new(&db, vec![card], 0.9, false);
+        let renderer = ImageRenderer::halfblocks();
+
+        state.sync_visible(None);
+        assert!(!flatten_footer(&state, None).contains("zoom"));
+
+        state.visible_key = None;
+        state.sync_visible(Some(&renderer));
+        let footer = flatten_footer(&state, Some(&renderer));
+        assert!(footer.contains("zoom"), "{footer}");
+        assert!(footer.contains("halfblocks"), "{footer}");
+
+        state.zoom_image = true;
+        let footer = flatten_footer(&state, Some(&renderer));
+        assert!(footer.contains("fit"), "{footer}");
     }
 
     #[tokio::test]
@@ -668,6 +971,15 @@ mod tests {
         let start = text.find('[').unwrap();
         let end = text[start..].find(']').unwrap() + start;
         text[start + 1..end].to_string()
+    }
+
+    /// The whole footer as one string, so tests do not depend on which line a chip sits on.
+    fn flatten_footer(state: &DrillState<'_>, renderer: Option<&ImageRenderer>) -> String {
+        instructions_text(state, renderer)
+            .iter()
+            .map(flatten_line)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn flatten_line(line: &Line<'_>) -> String {

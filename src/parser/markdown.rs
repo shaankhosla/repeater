@@ -10,8 +10,20 @@ pub fn render_markdown(md: &str) -> Text<'static> {
     let mut list_stack: Vec<ListKind> = Vec::new();
     let mut pending_prefix: Option<String> = None;
     let mut in_code_block = false;
+    let mut in_image = false;
 
     for event in parser {
+        // Swallow everything inside an image, including its alt text. On a card whose
+        // picture *is* the question ("which department is this?"), rendering the alt text
+        // would hand over the answer.
+        if in_image {
+            if matches!(event, Event::End(TagEnd::Image)) {
+                in_image = false;
+                pop_style(&mut styles);
+            }
+            continue;
+        }
+
         match event {
             Event::Start(tag) => match tag {
                 Tag::Heading { level, .. } => {
@@ -28,6 +40,22 @@ pub fn render_markdown(md: &str) -> Text<'static> {
                 Tag::Link { .. } => push_style(&mut styles, |style| {
                     style.add_modifier(Modifier::UNDERLINED)
                 }),
+                // A content-free marker: it says "there is a picture here" without
+                // revealing anything about it. Terminals that can draw the picture render
+                // it separately; elsewhere this is the cue to press `O`. To caption an
+                // image, write the caption as ordinary text next to it.
+                Tag::Image { .. } => {
+                    in_image = true;
+                    push_style(&mut styles, |style| style.add_modifier(Modifier::DIM));
+                    push_text(
+                        "[image]",
+                        current_style(&styles),
+                        in_code_block,
+                        &mut lines,
+                        &mut current_line,
+                        &mut pending_prefix,
+                    );
+                }
                 Tag::CodeBlock(_) => {
                     flush_line(&mut lines, &mut current_line);
                     in_code_block = true;
@@ -678,12 +706,62 @@ mod tests {
     use super::latex_to_unicode_math;
     use super::render_markdown;
     use proptest::prelude::*;
+    use ratatui::style::Modifier;
     proptest! {
         #[test]
         fn test_markdown_render( content in "\\PC*") {
             render_markdown(&content);
         }
     }
+    #[test]
+    fn marks_images_without_leaking_their_alt_text() {
+        let text = render_markdown("![Position : Lozère](42.png) then plain");
+        let flattened = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.to_string())
+            .collect::<String>();
+
+        assert!(
+            flattened.contains("[image]"),
+            "image marker missing: {flattened}"
+        );
+        // The whole point: a card whose picture is the question must not print the answer.
+        assert!(
+            !flattened.contains("Lozère") && !flattened.contains("Position"),
+            "alt text leaked into the rendered card: {flattened}"
+        );
+        assert!(
+            !flattened.contains("42.png"),
+            "image path leaked into the rendered card: {flattened}"
+        );
+
+        // The marker dims itself; text after the image must not inherit that. An
+        // unbalanced push/pop here would dim the rest of the card.
+        let trailing = text.lines[0].spans.last().unwrap();
+        assert_eq!(trailing.content, " then plain");
+        assert!(!trailing.style.add_modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn image_alt_text_with_markup_is_fully_suppressed() {
+        // Alt text can contain nested inline markup; none of it may reach the card.
+        let text = render_markdown("![**bold** and `code` and _em_](secret.png) after");
+        let flattened = text
+            .lines
+            .iter()
+            .flat_map(|line| line.spans.iter())
+            .map(|span| span.content.to_string())
+            .collect::<String>();
+
+        assert!(flattened.contains("[image]"), "{flattened}");
+        for leak in ["bold", "code", "em", "secret"] {
+            assert!(!flattened.contains(leak), "{leak:?} leaked: {flattened}");
+        }
+        assert!(flattened.contains(" after"), "{flattened}");
+    }
+
     #[test]
     fn renders_heading_and_paragraph() {
         let text = render_markdown("# Title\n\nBody");
