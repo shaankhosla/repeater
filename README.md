@@ -114,4 +114,4 @@ npm install @shaankhosla/repeater
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=shaankhosla/repeater&type=date&legend=top-left)](https://www.star-history.com/#shaankhosla/repeater&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=shaankhosla/repeater&type=date&legend=top-left)](https://star-history.dera.page/#shaankhosla/repeater&type=date&legend=top-left)
