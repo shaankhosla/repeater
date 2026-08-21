@@ -7,7 +7,7 @@ use crate::card::{Card, CardContent, ClozeRange};
 use crate::cloze_utils::find_cloze_ranges;
 use crate::palette::Palette;
 
-use super::{LlmClient, ensure_client, request_cloze};
+use super::{LlmClient, configured_client, ensure_client, request_cloze};
 
 use crate::llm::request_question_rephrase;
 use std::collections::HashMap;
@@ -32,6 +32,14 @@ pub struct DrillPreprocessor {
 
 impl DrillPreprocessor {
     pub async fn new(cards: &[Card], rephrase_questions: bool) -> Result<Self> {
+        Self::build(cards, rephrase_questions, true).await
+    }
+
+    pub async fn new_noninteractive(cards: &[Card], rephrase_questions: bool) -> Result<Self> {
+        Self::build(cards, rephrase_questions, false).await
+    }
+
+    async fn build(cards: &[Card], rephrase_questions: bool, interactive: bool) -> Result<Self> {
         let cards_needing_clozes = count_cards_needing_clozes(cards);
         let cards_needing_rephrase = if rephrase_questions {
             count_cards_needing_rephrase(cards)
@@ -93,12 +101,12 @@ impl DrillPreprocessor {
                         )
                     }
                 };
-                Some(
-                    ensure_client(&prompt)
-                        .await
-                        .with_context(|| error_message)
-                        .map(Arc::new)?,
-                )
+                let client_result = if interactive {
+                    ensure_client(&prompt).await
+                } else {
+                    configured_client()
+                };
+                Some(client_result.with_context(|| error_message).map(Arc::new)?)
             }
             None => None,
         };

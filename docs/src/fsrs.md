@@ -14,7 +14,7 @@ Short answer: most people should start around **0.75–0.85** and only change it
 
 In FSRS terms, `--retention` is your target probability of recalling a card at review time.
 `repeater` accepts values from `0.65` to `1.0`.
-Because it’s a drill flag, the target applies to the intervals computed during that session; pass it again next time to keep the same setting.
+For interactive drills, the target applies to intervals computed during that run. Agent-driven `drill-session` workflows store the target at `start` and reuse it for every `mark` in that session.
 
 - `0.90` → you want to remember ~90% of cards when they come up
 - `0.80` → you’re okay forgetting ~20%
