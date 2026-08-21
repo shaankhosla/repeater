@@ -24,6 +24,38 @@ Key bindings inside the drill UI:
 - `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
 - `Esc` / `Ctrl+C`: exit the session.
 
+### `repeater drill-session <COMMAND>`
+
+Drive reviews from agents and scripts through a JSON-only state machine. Successful
+responses are written to stdout; application errors are JSON on stderr with a nonzero
+exit status.
+
+```sh
+repeater drill-session start cards/ --retention 0.9
+repeater drill-session next <SESSION_ID>
+repeater drill-session reveal <REVIEW_ID>
+repeater drill-session mark <REVIEW_ID> pass
+```
+
+- `start [PATH ...]`: store absolute source paths and immutable session settings,
+  then return a session token. Supports `--apple-notes`, `--rephrase`,
+  `--retention`, and `--shuffle`.
+- `next <SESSION_ID>`: rescan the configured source and return one due question.
+  Calling it again before reveal returns the same review.
+- `reveal <REVIEW_ID>`: return the snapshotted answer. Repeated calls are
+  idempotent.
+- `mark <REVIEW_ID> <pass|fail>`: update FSRS and return the resulting due date.
+  Repeating the same result does not schedule the card twice.
+
+Each card presentation has a separate review token so retries cannot mark a later
+card accidentally. Sessions expire after 24 hours. The answer is omitted from
+`next`; it is persisted locally so source edits between `next` and `reveal` cannot
+change an active review.
+
+The queue is live rather than frozen: each `next` scans the source again. When
+nothing is due, the session returns `state: "complete"`.
+
+
 ### `repeater create <path/to/deck.md>`
 
 Launch the capture editor for a specific Markdown file (it is created if missing).

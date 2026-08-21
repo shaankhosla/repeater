@@ -1,14 +1,18 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand, ValueHint};
+use clap::{Args, Parser, Subcommand, ValueHint};
 
-use repeater::commands::{
-    check, create,
-    drill::{self, DrillOptions},
-};
 use repeater::crud::DB;
 use repeater::llm::client;
+use repeater::{
+    commands::{
+        check, create,
+        drill::{self, DrillOptions},
+        drill_session::{self, DrillSessionError, StartOptions},
+    },
+    fsrs::ReviewStatus,
+};
 use repeater::{import, llm, palette::Palette};
 
 #[derive(Parser, Debug)]
@@ -29,51 +33,14 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     /// Drill cards
-    Drill {
-        /// Paths to cards or directories containing them.
-        /// You can pass a single file, multiple files, or a directory.
-        #[arg(
-            value_name = "PATHS",
-            num_args = 0..,
-            default_value = ".",
-            value_hint = ValueHint::AnyPath
-        )]
-        paths: Vec<PathBuf>,
-        /// Maximum number of cards to drill in a session. By default, all cards due today are drilled.
-        #[arg(long, value_name = "COUNT")]
-        card_limit: Option<usize>,
-        /// Maximum number of new cards to drill in a session.
-        #[arg(long, value_name = "COUNT")]
-        new_card_limit: Option<usize>,
-        /// Rephrase  card questions via the LLM helper before the session starts.
-        #[arg(long = "rephrase", default_value_t = false)]
-        rephrase_questions: bool,
-        /// Randomize the order of cards in the drill session.
-        #[arg(long, default_value_t = true)]
-        shuffle: bool,
-        /// Goal retention FSRS should use, this is your target probability of recalling a card at review time.
-        #[arg(long, default_value_t = 0.9)]
-        retention: f32,
-        /// Drill cards from Apple Notes instead of local files (macOS only).
-        #[arg(long, default_value_t = false, conflicts_with = "paths")]
-        apple_notes: bool,
+    Drill(DrillArgs),
+    /// Work through due cards using individual CLI commands
+    DrillSession {
+        #[command(subcommand)]
+        command: DrillSessionCommand,
     },
     /// Re-index decks and show collection stats
-    Check {
-        #[arg(
-            value_name = "PATHS",
-            num_args = 0..,
-            default_value = ".",
-            value_hint = ValueHint::AnyPath
-        )]
-        paths: Vec<PathBuf>,
-        /// Print a plain summary instead of the TUI dashboard
-        #[arg(long, default_value_t = false)]
-        plain: bool,
-        /// Check cards from Apple Notes instead of local files (macOS only).
-        #[arg(long, default_value_t = false, conflicts_with = "paths")]
-        apple_notes: bool,
-    },
+    Check(CheckArgs),
     /// Create or append to a card
     Create {
         /// Card path
@@ -103,10 +70,118 @@ enum Command {
     },
 }
 
+#[derive(Args, Debug)]
+struct CardSourceArgs {
+    /// Paths to cards or directories containing them.
+    /// You can pass a single file, multiple files, or a directory.
+    #[arg(
+        value_name = "PATHS",
+        num_args = 0..,
+        default_value = ".",
+        value_hint = ValueHint::AnyPath
+    )]
+    paths: Vec<PathBuf>,
+    /// Read cards from Apple Notes instead of local files (macOS only).
+    #[arg(long, default_value_t = false, conflicts_with = "paths")]
+    apple_notes: bool,
+}
+
+#[derive(Args, Debug)]
+struct DrillSettingsArgs {
+    /// Rephrase questions via the LLM helper before presenting them.
+    #[arg(long = "rephrase", default_value_t = false)]
+    rephrase_questions: bool,
+    /// Goal retention FSRS should use when a card is marked.
+    #[arg(long, default_value_t = 0.9)]
+    retention: f32,
+}
+
+#[derive(Args, Debug)]
+struct DrillArgs {
+    #[command(flatten)]
+    source: CardSourceArgs,
+    /// Maximum number of cards to drill. By default, all cards due today are drilled.
+    #[arg(long, value_name = "COUNT")]
+    card_limit: Option<usize>,
+    /// Maximum number of new cards to drill.
+    #[arg(long, value_name = "COUNT")]
+    new_card_limit: Option<usize>,
+    #[command(flatten)]
+    settings: DrillSettingsArgs,
+    /// Randomize the order of cards in the drill session.
+    #[arg(long, default_value_t = false)]
+    shuffle: bool,
+}
+
+impl From<DrillArgs> for DrillOptions {
+    fn from(args: DrillArgs) -> Self {
+        Self {
+            paths: args.source.paths,
+            card_limit: args.card_limit,
+            new_card_limit: args.new_card_limit,
+            rephrase_questions: args.settings.rephrase_questions,
+            shuffle: args.shuffle,
+            retention: args.settings.retention,
+            apple_notes: args.source.apple_notes,
+        }
+    }
+}
+
+#[derive(Args, Debug)]
+struct DrillSessionStartArgs {
+    #[command(flatten)]
+    source: CardSourceArgs,
+    /// Randomly select from the cards currently due.
+    #[arg(long, default_value_t = false)]
+    shuffle: bool,
+    #[command(flatten)]
+    settings: DrillSettingsArgs,
+}
+
+#[derive(Args, Debug)]
+struct CheckArgs {
+    #[command(flatten)]
+    source: CardSourceArgs,
+    /// Print a plain summary instead of the TUI dashboard.
+    #[arg(long, default_value_t = false)]
+    plain: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum DrillSessionCommand {
+    /// Create a durable agent-driven drill session
+    Start(DrillSessionStartArgs),
+    /// Show the next card due for review
+    Next {
+        /// Token identifying the drill session
+        #[arg(value_name = "SESSION_ID")]
+        session_id: String,
+    },
+    /// Reveal the answer to a pending review
+    Reveal {
+        /// Token identifying the review
+        #[arg(value_name = "REVIEW_ID")]
+        review_id: String,
+    },
+    /// Mark a revealed review as pass or fail
+    Mark {
+        /// Token identifying the review
+        #[arg(value_name = "REVIEW_ID")]
+        review_id: String,
+        /// Review result to record
+        #[arg(value_name = "RESULT")]
+        result: ReviewStatus,
+    },
+}
+
 #[tokio::main]
 async fn main() {
     if let Err(err) = run_cli().await {
-        eprintln!("{:?}", err);
+        if let Some(session_error) = err.downcast_ref::<DrillSessionError>() {
+            eprintln!("{}", session_error.json());
+        } else {
+            eprintln!("{err:?}");
+        }
         std::process::exit(1);
     }
 }
@@ -116,27 +191,41 @@ async fn run_cli() -> Result<()> {
     let db = DB::new().await?;
 
     match cli.command {
-        Command::Drill {
-            paths,
-            card_limit,
-            new_card_limit,
-            rephrase_questions,
-            shuffle,
-            retention,
-            apple_notes,
-        } => {
-            drill::run(&db, DrillOptions {
-                paths,
-                card_limit,
-                new_card_limit,
-                rephrase_questions,
-                shuffle,
-                retention,
-                apple_notes,
-            }).await?;
+        Command::Drill(args) => {
+            drill::run(&db, args.into()).await?;
         }
-        Command::Check { paths, plain, apple_notes } => {
-            let _ = check::run(&db, paths, plain, apple_notes).await?;
+        Command::DrillSession { command } => match command {
+            DrillSessionCommand::Start(args) => {
+                drill_session::start(
+                    &db,
+                    StartOptions {
+                        paths: args.source.paths,
+                        apple_notes: args.source.apple_notes,
+                        retention: args.settings.retention,
+                        rephrase_questions: args.settings.rephrase_questions,
+                        shuffle: args.shuffle,
+                    },
+                )
+                .await?;
+            }
+            DrillSessionCommand::Next { session_id } => {
+                drill_session::next(&db, &session_id).await?;
+            }
+            DrillSessionCommand::Reveal { review_id } => {
+                drill_session::reveal(&db, &review_id).await?;
+            }
+            DrillSessionCommand::Mark { review_id, result } => {
+                drill_session::mark(&db, &review_id, result).await?;
+            }
+        },
+        Command::Check(args) => {
+            let _ = check::run(
+                &db,
+                args.source.paths,
+                args.plain,
+                args.source.apple_notes,
+            )
+            .await?;
         }
         Command::Create { path } => {
             create::run(&db, path).await?;

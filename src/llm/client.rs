@@ -57,6 +57,18 @@ pub async fn ensure_client(user_prompt: &str) -> Result<LlmClient> {
     Ok(LlmClient { client, llm_auth })
 }
 
+pub fn configured_client() -> Result<LlmClient> {
+    let lookup = get_api_key_from_sources()?;
+    let llm_auth = lookup.llm_auth.ok_or_else(|| {
+        anyhow!(
+            "LLM features are disabled. Configure them with `repeater llm --set` or set {}.",
+            API_KEY_ENV
+        )
+    })?;
+    let client = initialize_client(&llm_auth)?;
+    Ok(LlmClient { client, llm_auth })
+}
+
 pub async fn get_auth_and_store(user_prompt: &str) -> Result<ProviderAuth> {
     let llm_auth = prompt_for_llm_details(user_prompt).await?;
 

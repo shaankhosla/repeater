@@ -1,7 +1,9 @@
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use anyhow::{Result, bail};
 
+use crate::cloze_utils::mask_cloze_text;
 use crate::llm::drill_preprocessor::AIStatus;
 
 #[derive(Clone, Debug)]
@@ -29,6 +31,24 @@ impl Card {
             ai_status: AIStatus::NoNeed,
         }
     }
+
+    pub fn presentation(&self) -> CardPresentation<'_> {
+        match &self.content {
+            CardContent::Basic { question, answer } => CardPresentation {
+                kind: CardType::Basic,
+                question: Cow::Borrowed(question),
+                answer,
+            },
+            CardContent::Cloze { text, cloze_range } => CardPresentation {
+                kind: CardType::Cloze,
+                question: cloze_range.as_ref().map_or_else(
+                    || Cow::Borrowed(text.as_str()),
+                    |range| Cow::Owned(mask_cloze_text(text, range)),
+                ),
+                answer: text,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -41,6 +61,13 @@ pub enum CardContent {
         text: String,
         cloze_range: Option<ClozeRange>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CardPresentation<'a> {
+    pub kind: CardType,
+    pub question: Cow<'a, str>,
+    pub answer: &'a str,
 }
 
 #[derive(Clone, Debug)]
@@ -63,7 +90,7 @@ impl ClozeRange {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CardType {
     Basic,
     Cloze,

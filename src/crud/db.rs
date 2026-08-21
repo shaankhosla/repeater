@@ -1,8 +1,9 @@
 use anyhow::Result;
 use sqlx::SqlitePool;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 
 use std::str::FromStr;
+use std::time::Duration;
 
 use crate::utils::get_data_dir;
 
@@ -16,8 +17,11 @@ impl DB {
         let data_dir = get_data_dir()?;
         let db_path = data_dir.join("cards.db");
 
-        let options =
-            SqliteConnectOptions::from_str(&db_path.to_string_lossy())?.create_if_missing(true);
+        let options = SqliteConnectOptions::from_str(&db_path.to_string_lossy())?
+            .create_if_missing(true)
+            .foreign_keys(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .busy_timeout(Duration::from_secs(5));
 
         Self::connect(options).await
     }
