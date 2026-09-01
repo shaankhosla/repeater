@@ -37,7 +37,7 @@ In practice, this means less flexibility but much less friction. You edit cards 
 ## Features
 
 - **Markdown-first decks**: write basic Q/A + cloze cards in plain `.md` alongside your notes.
-- **Media support**: open linked images/audio/video.
+- **Media support**: images drawn inline in terminals with graphics support (Kitty, Ghostty, iTerm2, WezTerm, foot, …); linked audio/video open in your OS viewer.
 - **Anki import**: import your existing Anki decks `.apkg` to Markdown.
 - **Stable card identity**: “meaning-only” hashing; formatting tweaks don’t reset progress.
 - **Optional LLM helper**: add an OpenAI key once to auto-suggest missing Cloze brackets and optionally rephrase basic questions (see the [docs](https://shaankhosla.github.io/repeater/llm-usage.html)).
