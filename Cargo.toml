@@ -38,7 +38,7 @@ flate2 = "1"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["async_tokio" ] }
-proptest = "1.10.0"
+proptest = "1.11.0"
 
 [[bench]]
 name = "register_all_cards_bench"
