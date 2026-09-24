@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use fsrs::{DEFAULT_PARAMETERS, FSRS, MemoryState};
 
+use clap::ValueEnum;
 const SECONDS_PER_DAY: f64 = 86_400.0;
 
 pub const LEARN_AHEAD_THRESHOLD_MINS: Duration = Duration::minutes(20);
@@ -21,7 +22,7 @@ fn early_interval_cap(review_count: usize, review_status: ReviewStatus) -> Optio
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, ValueEnum)]
 pub enum ReviewStatus {
     Pass,
     Fail,

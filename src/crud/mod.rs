@@ -1,5 +1,6 @@
 pub mod cards;
 pub mod db;
+pub mod drill_sessions;
 pub mod stats;
 pub mod version;
 

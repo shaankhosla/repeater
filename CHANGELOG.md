@@ -1,5 +1,9 @@
 ## [0.1.10] - 2026-05-07
 
+### Features
+
+- Add a durable JSON drill-session protocol for agent-driven `start`, `next`, `reveal`, and `mark` workflows.
+
 ### 💼 Other
 
 - *(deps)* Bump rand from 0.10.0 to 0.10.1 (#140)

@@ -2,8 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::card::{Card, CardContent};
-use crate::cloze_utils::mask_cloze_text;
+use crate::card::{Card, CardType};
 use crate::crud::DB;
 use crate::fsrs::{LEARN_AHEAD_THRESHOLD_MINS, ReviewStatus};
 use crate::llm::drill_preprocessor::{AIStatus, DrillPreprocessor};
@@ -86,12 +85,12 @@ pub async fn run(db: &DB, opts: DrillOptions) -> Result<()> {
     Ok(())
 }
 
-fn validate_retention(retention: f32) -> Result<()> {
+pub(super) fn validate_retention(retention: f32) -> Result<()> {
     if retention > 1.0 {
         bail!("Retention must be less than or equal to 1.0")
     }
     if retention < 0.65 {
-        bail!("Retention must be greater than 0.65")
+        bail!("Retention must be greater than or equal to 0.65")
     }
     Ok(())
 }
@@ -448,21 +447,17 @@ fn instructions_text(state: &DrillState<'_>) -> Vec<Line<'static>> {
 }
 
 fn format_card_text(card: &Card, show_answer: bool) -> String {
-    match &card.content {
-        CardContent::Basic { question, answer } => {
-            let mut text = format!("Q:\n{}\n\nA:\n", question);
+    let presentation = card.presentation();
+    match presentation.kind {
+        CardType::Basic => {
+            let mut text = format!("Q:\n{}\n\nA:\n", presentation.question);
             if show_answer {
-                text.push_str(answer);
+                text.push_str(presentation.answer);
             }
             text
         }
-        CardContent::Cloze { text, cloze_range } => {
-            let body = match (cloze_range, show_answer) {
-                (Some(range), false) => mask_cloze_text(text, range),
-                _ => text.clone(),
-            };
-            format!("C:\n{}", body)
-        }
+        CardType::Cloze if show_answer => format!("C:\n{}", presentation.answer),
+        CardType::Cloze => format!("C:\n{}", presentation.question),
     }
 }
 
@@ -495,7 +490,7 @@ async fn preprocess_cards_in_order(
 
 #[cfg(test)]
 mod tests {
-    use crate::card::ClozeRange;
+    use crate::card::{CardContent, ClozeRange};
     use crate::cloze_utils::find_cloze_ranges;
 
     use super::*;
