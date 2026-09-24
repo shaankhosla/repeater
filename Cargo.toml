@@ -10,7 +10,9 @@ authors = ["Shaan Khosla <shaan.khosla@proton.me>"]
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
-ratatui = "0.30.0"
+ratatui = "0.30.1"
+ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 crossterm = "0.29"
 anyhow = "1.0.102"
 sqlx = { version = "0.8", features = [ "runtime-tokio-rustls" , "sqlite", "chrono", "macros", "migrate"] }

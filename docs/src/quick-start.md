@@ -30,7 +30,8 @@
    ```
 
    - `Space`/`Enter`: reveal the answer or cloze.
-   - `O`: open the first media file (image/audio/video) referenced in the current card before revealing the answer.
+   - `O`: open a media file (image/audio/video) referenced in the current card in your OS viewer.
+   - `I`: when an image is drawn inline, toggle it between sharing the panel and filling it.
    - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
    - `Esc` or `Ctrl+C`: end the session early (progress so far is saved).
 

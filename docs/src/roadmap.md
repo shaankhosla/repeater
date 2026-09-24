@@ -1,6 +1,7 @@
 # Roadmap
 
 - [X] Import from Anki
+- [X] Show card images inline in terminals with graphics support
 - [ ] Allow scrolling to other cards in a collection while creating a new card
 - [ ] Edit an existing card while keeping the progress intact
 - [ ] Allow for a fuzzy search of existing cards

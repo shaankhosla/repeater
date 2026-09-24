@@ -9,6 +9,7 @@ use repeater::commands::{
 };
 use repeater::crud::DB;
 use repeater::llm::client;
+use repeater::tui::InlineImages;
 use repeater::{import, llm, palette::Palette};
 
 #[derive(Parser, Debug)]
@@ -57,6 +58,10 @@ enum Command {
         /// Drill cards from Apple Notes instead of local files (macOS only).
         #[arg(long, default_value_t = false, conflicts_with = "paths")]
         apple_notes: bool,
+        /// Draw card images in the terminal. `auto` only does so where a graphics protocol
+        /// is available, `always` falls back to coarse half-blocks, `off` disables it.
+        #[arg(long, value_enum, default_value_t = InlineImages::Auto)]
+        inline_images: InlineImages,
     },
     /// Re-index decks and show collection stats
     Check {
@@ -124,6 +129,7 @@ async fn run_cli() -> Result<()> {
             shuffle,
             retention,
             apple_notes,
+            inline_images,
         } => {
             drill::run(&db, DrillOptions {
                 paths,
@@ -133,6 +139,7 @@ async fn run_cli() -> Result<()> {
                 shuffle,
                 retention,
                 apple_notes,
+                inline_images,
             }).await?;
         }
         Command::Check { paths, plain, apple_notes } => {

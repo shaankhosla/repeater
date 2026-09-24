@@ -10,6 +10,7 @@ Start a terminal drilling session for one or more files/directories (default: cu
 - `--shuffle`: randomize the order of cards in the session.
 - `--retention <FLOAT>`: target recall probability for FSRS scheduling (default: `0.9`, allowed range: `0.65`–`1.0`).
 - `--apple-notes` *(beta)*: source cards from Apple Notes instead of local Markdown files. macOS only — requires Full Disk Access for your terminal (System Settings > Privacy & Security > Full Disk Access). Conflicts with `[PATH ...]`.
+- `--inline-images <auto|off|always>`: draw card images directly in the terminal (default: `auto`). See [Media in Cards](./media-in-cards.md#inline-images).
 
 Example: drill all the physics decks and a single chemistry deck, stopping after 20 cards. This is just for extra practice, so let's lower the retention rate to `0.7`.
 
@@ -21,7 +22,8 @@ Key bindings inside the drill UI:
 
 - `Space`/`Enter`: reveal the answer or cloze.
 - `F`: mark as `Fail`, `Space`/`Enter`: mark as `Pass`.
-- `O`: open the first media file detected in the current card (images/audio/video). The file opens in your OS default viewer before the answer is revealed.
+- `O`: open a media file detected in the current card (images/audio/video) in your OS default viewer. Works on both the question and the answer side. When an image is being drawn inline, `O` opens that image; otherwise it opens the first attachment.
+- `I`: with an image drawn inline, toggle between sharing the card panel with the text and filling it.
 - `Esc` / `Ctrl+C`: exit the session.
 
 ### `repeater create <path/to/deck.md>`
