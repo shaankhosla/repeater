@@ -12,16 +12,13 @@ use crate::palette::Palette;
 use crate::parser::register_all_cards;
 use crate::parser::render_markdown;
 use crate::parser::{Media, extract_media};
-use crate::tui::Theme;
+use crate::tui::{Theme, pop_keyboard_enhancement, push_keyboard_enhancement};
 use crate::utils::pluralize;
 
 use anyhow::{Context, Result, anyhow, bail};
 use crossterm::event::KeyModifiers;
 use crossterm::{
-    event::{
-        self, Event, KeyCode, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-        PushKeyboardEnhancementFlags,
-    },
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -226,15 +223,8 @@ async fn start_drill_session(
 ) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-                | KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        )
-    )
-    .context("failed to configure terminal")?;
+    execute!(stdout, EnterAlternateScreen).context("failed to configure terminal")?;
+    push_keyboard_enhancement(&mut stdout).context("failed to configure terminal")?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("failed to start terminal")?;
     terminal.hide_cursor().context("failed to hide cursor")?;
@@ -370,12 +360,8 @@ async fn start_drill_session(
 
 fn teardown_terminal(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> Result<()> {
     disable_raw_mode().context("failed to disable raw mode")?;
-    execute!(
-        terminal.backend_mut(),
-        PopKeyboardEnhancementFlags,
-        LeaveAlternateScreen
-    )
-    .context("failed to restore terminal")?;
+    pop_keyboard_enhancement(terminal.backend_mut()).context("failed to restore terminal")?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen).context("failed to restore terminal")?;
     terminal.show_cursor().context("failed to show cursor")?;
     Ok(())
 }

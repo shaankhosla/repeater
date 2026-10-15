@@ -5,6 +5,7 @@ use crate::{
     parser::{cards_from_md, content_to_cards},
     tui::Editor,
     tui::Theme,
+    tui::{pop_keyboard_enhancement, push_keyboard_enhancement},
     utils::ask_yn,
     utils::is_markdown,
 };
@@ -19,10 +20,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use crossterm::{
-    event::{
-        self, Event, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
-        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
-    },
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -101,14 +99,8 @@ async fn create_card_append_file(db: &DB, path: &Path, contents: &str) -> Result
 async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        PushKeyboardEnhancementFlags(
-            KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-                | KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        )
-    )?;
+    execute!(stdout, EnterAlternateScreen)?;
+    push_keyboard_enhancement(&mut stdout)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.show_cursor()?;
@@ -274,11 +266,8 @@ async fn capture_cards(db: &DB, card_path: &Path) -> Result<()> {
     .await;
 
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        PopKeyboardEnhancementFlags,
-        LeaveAlternateScreen
-    )?;
+    pop_keyboard_enhancement(terminal.backend_mut())?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     editor_result
